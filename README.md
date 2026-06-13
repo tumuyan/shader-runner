@@ -6,20 +6,21 @@
 
 - **编辑模式** — 粘贴 ShaderToy 的 `mainImage` GLSL 代码，实时编译运行
 - **预览模式** — 全屏渲染，无任何 UI 干扰，通过 URL 参数控制
-- **内置 shader 文件选择器** — 下拉列表切换内置 shader，切换即时生效
+- **内置 shader 选择器** — 下拉列表切换内置 shader，切换即时生效
 - **本地文件打开** — 从本地选择 `.glsl` / `.frag` 文件直接加载
-- **本地压缩分享** — lz-string 压缩 shader 代码到 URL hash 中，无需服务器存储；来自内置文件的分享自动生成 `?src=` 短链接
+- **本地压缩分享** — lz-string 压缩 shader 代码到 URL hash 中，无需服务器存储
+- **文件短链接分享** — 内置 shader 自动生成 `?src=` 短链接，无需压缩编码
 - **服务端发布** — 使用 Netlify Blob Storage 存储，URL 只含 8 位短 ID
 - **解码测试** — 将分享的 URL 或编码数据还原回编辑框
 - **自动暂停** — 页面不可见时自动暂停，恢复后继续
 
 ## 快速开始
 
-直接将 `shader.html`（或 `index.html`）拖到浏览器中打开即可使用，无需任何构建步骤。
+直接将 `index.html` 拖到浏览器中打开即可使用，无需任何构建步骤。
 
 ```
 # 本地打开
-open shader.html
+open index.html
 
 # 或通过 HTTP 服务
 npx serve .
@@ -32,14 +33,14 @@ npx serve .
 | `mode` | 页面模式：`edit`（默认）或 `preview` | `?mode=preview` |
 | `code` | lz-string 压缩的 shader 代码（放在 hash 中） | `#code=L8RjIMoz...` |
 | `id` | 服务端存储的 shader ID | `#id=Ab3xK9mQ` |
-| `src` | 加载内置 shader 文件路径（如 `shader/xxx.glsl.css`） | `?src=shader/shader.glsl.css` |
+| `src` | 加载内置 shader 文件路径 | `?src=shader/synthwave.shader.js` |
 
 ### 生成分享链接
 
 ```
-https://your-site.com/shader.html?mode=preview#code=L8RjIMoz...
-https://your-site.com/shader.html?mode=edit#code=L8RjIMoz...
-https://your-site.com/shader.html?mode=preview&src=shader/shader.glsl.css
+https://your-site.com/?mode=preview#code=L8RjIMoz...      # 本地压缩
+https://your-site.com/?mode=preview#id=Ab3xK9mQ            # 服务端发布
+https://your-site.com/?mode=preview&src=shader/synthwave.shader.js  # 文件短链接
 ```
 
 ## 部署
@@ -69,7 +70,7 @@ ntl dev
 
 ### 方式三：任意静态托管（GitHub Pages / cnb.run / Cloudflare Pages 等）
 
-直接上传 `index.html` 即可。注意：此方式不支持「发布」功能（需要 Serverless 函数）。
+直接上传 `index.html` 和 `shader/` 目录即可。注意：此方式不支持「发布」功能（需要 Serverless 函数）。
 
 ## 项目结构
 
@@ -77,7 +78,8 @@ ntl dev
 /
 ├── index.html                       # 主页面（含所有逻辑）
 ├── shader/
-│   └── *.glsl.css              # 内置 shader 示例
+│   ├── synthwave.shader.js          # 内置 shader（Synthwave Sunset）
+│   └── aurora-paint.shader.js       # 内置 shader（Aurora Paint）
 ├── README.md                        # 文档
 ├── vercel.json                      # Vercel 部署配置
 ├── api/
@@ -91,20 +93,36 @@ ntl dev
 
 ## 工作原理
 
+### shader 加载方式
+
+内置 shader 存储在 `shader/*.shader.js` 文件中，每个文件是一个自执行的 IIFE：
+
+```js
+(function(w){
+  var d = (w.__SHADER_REGISTRY__ = w.__SHADER_REGISTRY__ || []);
+  d.push({ path: 'shader/xxx.shader.js', label: '名称', code: `GLSL 代码` });
+})(window);
+```
+
+`index.html` 启动时通过 `<script>` 标签动态加载这些文件（`<script>` 不受 CORS 限制），加载完成后将注册表内容填入内置 shader 列表。若页面被 iframe 嵌入，这种方式也能正常工作。
+
 ### 分享流程
 
 ```
-用户粘贴 GLSL 代码
+用户粘贴/选择 GLSL 代码
         │
         ▼
    编辑模式 → 点击「分享链接」
         │
-        ├──→ lz-string 压缩 → encodeURIComponent → #code=...
+        ├──→ 来自内置文件 → 生成 ?src=path 短链接
+        │
+        ├──→ 自定义代码 → lz-string 压缩 → #code=...
         │    （纯前端，数据在 URL 中，离线可用）
         │
         └──→ 点击「发布」
-             └──→ POST /.netlify/functions/shader
-                  └──→ Netlify Blob Storage
+             └──→ POST /api/shader
+                  ├── Netlify: redirect → /.netlify/functions/shader → Blob Storage
+                  └── Vercel:  → api/shader.js → 内存存储
                        └──→ 返回 8 位短 ID → #id=...
 ```
 
@@ -159,4 +177,5 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 - **WebGL2** — 硬件加速渲染
 - **lz-string** — 浏览器端 LZ 压缩，3~5x 压缩率
 - **Netlify Blob Storage** — 服务端键值存储（可选）
+- **Vercel Serverless Functions** / **Netlify Functions** — 服务端发布
 - 纯 HTML/CSS/JS，无外部依赖

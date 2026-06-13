@@ -1024,13 +1024,43 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         function closeEditor() { overlay.classList.remove('open'); }
 
         // ============================================================
-        // shader 文件选择器
+        // 内置 shader — 通过动态 <script> 加载 .shader.js 文件（不受 CORS 限制）
         // ============================================================
-        // 内置 shader 文件列表（路径相对于站点根目录）
-        const BUILTIN_SHADERS = [
-            { path: 'shader/shader.glsl.css',       label: 'Synthwave Sunset' },
-            { path: 'shader/aurora-paint.glsl.css', label: 'Aurora Paint' },
+        const BUILTIN_SHADERS = [];  // 由 loadShaderScripts 填充
+        const SHADER_JS_FILES = [
+            'shader/synthwave.shader.js',
+            'shader/aurora-paint.shader.js',
         ];
+
+        // 动态加载 shader JS 文件，填充 BUILTIN_SHADERS
+        function loadShaderScripts() {
+            if (window.__SHADER_REGISTRY__ && window.__SHADER_REGISTRY__.length > 0) {
+                // 已加载（可能被后续重复调用）
+                BUILTIN_SHADERS.length = 0;
+                BUILTIN_SHADERS.push.apply(BUILTIN_SHADERS, window.__SHADER_REGISTRY__);
+                return Promise.resolve();
+            }
+            return new Promise((resolve) => {
+                var loaded = 0;
+                var total = SHADER_JS_FILES.length;
+                if (total === 0) { resolve(); return; }
+                SHADER_JS_FILES.forEach(function(path) {
+                    var s = document.createElement('script');
+                    s.src = path;
+                    s.onload = s.onerror = function() {
+                        loaded++;
+                        if (loaded >= total) {
+                            var reg = window.__SHADER_REGISTRY__ || [];
+                            BUILTIN_SHADERS.length = 0;
+                            BUILTIN_SHADERS.push.apply(BUILTIN_SHADERS, reg);
+                            resolve();
+                        }
+                    };
+                    document.head.appendChild(s);
+                });
+            });
+        }
+
         let currentSrc = '';   // 当前 shader 的来源文件路径，空 = 非文件来源
 
         const shaderSelector = document.getElementById('shaderSelector');
@@ -1038,16 +1068,21 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const fileInput = document.getElementById('fileInput');
 
         // 填充下拉列表（空选项在最前）
-        const emptyOpt = document.createElement('option');
-        emptyOpt.value = '';
-        emptyOpt.textContent = '— 选择内置 shader —';
-        shaderSelector.appendChild(emptyOpt);
-        BUILTIN_SHADERS.forEach((s, i) => {
-            const opt = document.createElement('option');
-            opt.value = s.path;
-            opt.textContent = s.label;
-            shaderSelector.appendChild(opt);
-        });
+        function populateShaderDropdown() {
+            shaderSelector.innerHTML = '';
+            var emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.textContent = '— 选择内置 shader —';
+            shaderSelector.appendChild(emptyOpt);
+            BUILTIN_SHADERS.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s.path;
+                opt.textContent = s.label;
+                shaderSelector.appendChild(opt);
+            });
+        }
+        // 先填一次（后续 loadShaderScripts 完成后会再次填充）
+        populateShaderDropdown();
 
         // 清空文件来源标记（恢复下拉到空选项）
         function clearFileSource() {
@@ -1061,29 +1096,20 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (currentSrc) clearFileSource();
         });
 
-        // 加载 shader 文件（同时更新下拉选中项）
+        // 加载内置 shader 文件（从内联数据直接读取，无需 fetch，避免 iframe 嵌入时 CORS 失败）
         async function loadShaderFile(path) {
             if (!path) return;
-            fetchLoader.classList.add('show');
-            try {
-                const res = await fetch(path);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const code = await res.text();
-                textarea.value = code;
-                currentSrc = path;
-                // 同步下拉选中项
-                for (const opt of shaderSelector.options) {
-                    opt.selected = opt.value === path;
-                }
-                syncUrlInput();
-                applyShader(code);
-                showToast('✓ 已加载: ' + path);
-            } catch (err) {
-                console.error('加载 shader 文件失败', err);
-                showToast('✗ 加载失败: ' + path);
-            } finally {
-                fetchLoader.classList.remove('show');
+            const entry = BUILTIN_SHADERS.find(s => s.path === path);
+            if (!entry) { showToast('✗ 未找到: ' + path); return; }
+            textarea.value = entry.code;
+            currentSrc = path;
+            // 同步下拉选中项
+            for (const opt of shaderSelector.options) {
+                opt.selected = opt.value === path;
             }
+            syncUrlInput();
+            applyShader(entry.code);
+            showToast('✓ 已加载: ' + entry.label);
         }
 
         // 下拉列表切换
@@ -1242,7 +1268,24 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 showToast('✓ 链接已复制');
             });
         }
-        shareBtn.addEventListener('click', () => doShare('preview'));
+        shareBtn.addEventListener('click', () => {
+            if (currentSrc) {
+                // 来自内置文件 → 复制 ?src= 短链接
+                const base = window.location.origin + window.location.pathname;
+                const url = base + '?mode=preview&src=' + currentSrc;
+                navigator.clipboard.writeText(url).then(() => {
+                    showToast('✓ 文件链接已复制');
+                }).catch(() => {
+                    const inp = document.createElement('input');
+                    inp.value = url; document.body.appendChild(inp);
+                    inp.select(); document.execCommand('copy');
+                    document.body.removeChild(inp);
+                    showToast('✓ 链接已复制');
+                });
+            } else {
+                doShare('preview');
+            }
+        });
 
         // 统一 API 路径（Netlify 通过重写规则映射到 /.netlify/functions/shader）
         const API_PATH = '/api/shader';
@@ -1290,6 +1333,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // 8. 启动：选择数据来源
         // ============================================================
         async function init() {
+            // 先加载 shader JS 文件（通过 <script> 标签，不受 CORS 限制）
+            await loadShaderScripts();
+            populateShaderDropdown();
+
             let shaderCode = '';
 
             if (params.code) {
@@ -1310,23 +1357,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                     fetchLoader.classList.remove('show');
                 }
             } else if (params.src) {
-                // 从本地 .glsl 文件加载
-                fetchLoader.classList.add('show');
-                try {
-                    const res = await fetch(params.src);
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    shaderCode = await res.text();
+                // 从内置 shader 数据加载（内联，无需 fetch，避免 CORS 问题）
+                const entry = BUILTIN_SHADERS.find(s => s.path === params.src);
+                if (entry) {
+                    shaderCode = entry.code;
                     currentSrc = params.src;
-                    // 同步下拉选中项
                     for (const opt of shaderSelector.options) {
                         opt.selected = opt.value === params.src;
                     }
                     console.log('📄 已加载 shader 文件:', params.src);
-                } catch (err) {
-                    console.error('加载 shader 文件失败', err);
-                    showToast('✗ 加载失败：' + params.src);
-                } finally {
-                    fetchLoader.classList.remove('show');
+                } else {
+                    console.error('未找到内置 shader:', params.src);
+                    showToast('✗ 未找到: ' + params.src);
                 }
             }
 

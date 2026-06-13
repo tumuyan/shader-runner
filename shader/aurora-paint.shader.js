@@ -1,4 +1,9 @@
-// https://www.shadertoy.com/view/N3lXzS
+(function(w){
+  var d = (w.__SHADER_REGISTRY__ = w.__SHADER_REGISTRY__ || []);
+  d.push({
+    path: 'shader/aurora-paint.shader.js',
+    label: 'Aurora Paint',
+    code: `// https://www.shadertoy.com/view/N3lXzS
 // Aurora Paint
 // By Noztol
 
@@ -269,4 +274,6 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     col *= vignetteAmt;
     
     fragColor = vec4(col, 1.);
-}
+}`
+  });
+})(window);

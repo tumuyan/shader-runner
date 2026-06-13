@@ -1,4 +1,9 @@
-//#define AA 4
+(function(w){
+  var d = (w.__SHADER_REGISTRY__ = w.__SHADER_REGISTRY__ || []);
+  d.push({
+    path: 'shader/synthwave.shader.js',
+    label: 'Synthwave Sunset',
+    code: `//#define AA 4
 //#define VAPORWAVE
 //#define stereo 1. // -1. for cross-eyed (defaults to parallel view)
 #define speed 10. 
@@ -258,4 +263,6 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 	"description": "I was thinking of a way to make pseudo tesselation noise and i made this to illustrate it, i might not be the first one to come up with this solution.",
 	"model": "car"
 }
-*/
+*/`
+  });
+})(window);
