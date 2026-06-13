@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/shader.js": {
+      "maxDuration": 10
+    }
+  }
+}

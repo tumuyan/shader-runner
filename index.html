@@ -496,313 +496,110 @@
 
     <script>
         // ============================================================
-        // 0. LZ-String 压缩（精简内联版，仅 URI 安全编解码）
-        //    来源: https://github.com/pieroxy/lz-string
+        // LZ-String v1.4.5 (官方版)
         // ============================================================
-        var LZString = (function(){
+        var LZString = (function() {
             var f = String.fromCharCode;
-            var keyStrUri = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$";
-
+            var keyStrUriSafe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$";
+            var baseReverseDic = {};
+            function getBaseValue(alphabet, character) {
+                if (!baseReverseDic[alphabet]) { baseReverseDic[alphabet] = {};
+                    for (var i = 0; i < alphabet.length; i++) baseReverseDic[alphabet][alphabet.charAt(i)] = i; }
+                return baseReverseDic[alphabet][character];
+            }
             function _compress(uncompressed, bitsPerChar, getCharFromInt) {
-                var context_dictionary = {},
-                    context_dictionaryToCreate = {},
-                    context_c = "",
-                    context_wc = "",
-                    context_w = "",
-                    context_enlargeIn = 2,
-                    context_dictSize = 3,
-                    context_numBits = 2,
-                    context_data = [],
-                    context_data_val = 0,
-                    context_data_position = 0,
-                    ii;
-                for (var ii = 0; ii < uncompressed.length; ii += 1) {
+                if (uncompressed == null) return "";
+                var i, value, context_dictionary = {}, context_dictionaryToCreate = {}, context_c = "", context_wc = "", context_w = "",
+                    context_enlargeIn = 2, context_dictSize = 3, context_numBits = 2, context_data = [], context_data_val = 0, context_data_position = 0, ii;
+                for (ii = 0; ii < uncompressed.length; ii += 1) {
                     context_c = uncompressed.charAt(ii);
-                    if (!Object.prototype.hasOwnProperty.call(context_dictionary, context_c)) {
-                        context_dictionary[context_c] = context_dictSize++;
-                        context_dictionaryToCreate[context_c] = true;
-                    }
+                    if (!Object.prototype.hasOwnProperty.call(context_dictionary, context_c)) { context_dictionary[context_c] = context_dictSize++; context_dictionaryToCreate[context_c] = true; }
                     context_wc = context_w + context_c;
-                    if (Object.prototype.hasOwnProperty.call(context_dictionary, context_wc)) {
-                        context_w = context_wc;
-                    } else {
+                    if (Object.prototype.hasOwnProperty.call(context_dictionary, context_wc)) { context_w = context_wc; }
+                    else {
                         if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
-                            var c = context_w.charCodeAt(0);
-                            for (var jj = 0; jj < context_numBits; jj++) {
-                                context_data_val = (context_data_val << 1);
-                                context_data_position++;
-                                if (context_data_position === bitsPerChar) {
-                                    context_data_position = 0;
-                                    context_data.push(getCharFromInt(context_data_val));
-                                    context_data_val = 0;
-                                }
+                            if (context_w.charCodeAt(0) < 256) {
+                                for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } }
+                                value = context_w.charCodeAt(0);
+                                for (i = 0; i < 8; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+                            } else {
+                                value = 1;
+                                for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | value; if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = 0; }
+                                value = context_w.charCodeAt(0);
+                                for (i = 0; i < 16; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
                             }
-                            var bits = 0;
-                            var t = c;
-                            while (t > 0) { bits++; t >>= 1; }
-                            var t2 = bits;
-                            var bs = "";
-                            while (t2 > 0) { bs = String(1 & c) + bs; c >>= 1; t2--; }
-                            while (bs.length < bits) { bs = "0" + bs; }
-                            for (var jj = 0; jj < bits; jj++) {
-                                context_data_val = (context_data_val << 1);
-                                if (bs[jj] == "1") context_data_val++;
-                                context_data_position++;
-                                if (context_data_position === bitsPerChar) {
-                                    context_data_position = 0;
-                                    context_data.push(getCharFromInt(context_data_val));
-                                    context_data_val = 0;
-                                }
-                            }
+                            context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
                             delete context_dictionaryToCreate[context_w];
                         } else {
-                            var c = context_dictionary[context_w];
-                            for (var jj = 0; jj < context_numBits; jj++) {
-                                context_data_val = (context_data_val << 1);
-                                if ((c & 1) !== 0) context_data_val++;
-                                c >>= 1;
-                                context_data_position++;
-                                if (context_data_position === bitsPerChar) {
-                                    context_data_position = 0;
-                                    context_data.push(getCharFromInt(context_data_val));
-                                    context_data_val = 0;
-                                }
-                            }
+                            value = context_dictionary[context_w];
+                            for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
                         }
-                        context_enlargeIn--;
-                        if (context_enlargeIn === 0) {
-                            context_enlargeIn = 2 << context_numBits;
-                            context_numBits++;
-                        }
+                        context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
                         context_dictionary[context_wc] = context_dictSize++;
                         context_w = String(context_c);
                     }
                 }
                 if (context_w !== "") {
                     if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
-                        var c = context_w.charCodeAt(0);
-                        for (var jj = 0; jj < context_numBits; jj++) {
-                            context_data_val = (context_data_val << 1);
-                            context_data_position++;
-                            if (context_data_position === bitsPerChar) {
-                                context_data_position = 0;
-                                context_data.push(getCharFromInt(context_data_val));
-                                context_data_val = 0;
-                            }
+                        if (context_w.charCodeAt(0) < 256) {
+                            for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } }
+                            value = context_w.charCodeAt(0);
+                            for (i = 0; i < 8; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+                        } else {
+                            value = 1;
+                            for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | value; if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = 0; }
+                            value = context_w.charCodeAt(0);
+                            for (i = 0; i < 16; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
                         }
-                        var bits = 0;
-                        var t = c;
-                        while (t > 0) { bits++; t >>= 1; }
-                        var t2 = bits;
-                        while (t2 > 0) { bs = String(1 & c) + bs; c >>= 1; t2--; }
-                        while (bs.length < bits) { bs = "0" + bs; }
-                        for (var jj = 0; jj < bits; jj++) {
-                            context_data_val = (context_data_val << 1);
-                            if (bs[jj] == "1") context_data_val++;
-                            context_data_position++;
-                            if (context_data_position === bitsPerChar) {
-                                context_data_position = 0;
-                                context_data.push(getCharFromInt(context_data_val));
-                                context_data_val = 0;
-                            }
-                        }
+                        context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
                         delete context_dictionaryToCreate[context_w];
                     } else {
-                        var c = context_dictionary[context_w];
-                        for (var jj = 0; jj < context_numBits; jj++) {
-                            context_data_val = (context_data_val << 1);
-                            if ((c & 1) !== 0) context_data_val++;
-                            c >>= 1;
-                            context_data_position++;
-                            if (context_data_position === bitsPerChar) {
-                                context_data_position = 0;
-                                context_data.push(getCharFromInt(context_data_val));
-                                context_data_val = 0;
-                            }
-                        }
+                        value = context_dictionary[context_w];
+                        for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
                     }
-                    context_enlargeIn--;
-                    if (context_enlargeIn === 0) {
-                        context_enlargeIn = 2 << context_numBits;
-                        context_numBits++;
-                    }
+                    context_enlargeIn--; if (context_enlargeIn == 0) { context_enlargeIn = Math.pow(2, context_numBits); context_numBits++; }
                 }
-                var value = 1;
-                for (var jj = 0; jj < context_numBits; jj++) {
-                    context_data_val = (context_data_val << 1);
-                    if (value == 1) context_data_val++;
-                    value = 0;
-                    context_data_position++;
-                    if (context_data_position === bitsPerChar) {
-                        context_data_position = 0;
-                        context_data.push(getCharFromInt(context_data_val));
-                        context_data_val = 0;
-                    }
-                }
-                while (true) {
-                    context_data_val = (context_data_val << 1);
-                    context_data_position++;
-                    if (context_data_position === bitsPerChar) {
-                        context_data_position = 0;
-                        context_data.push(getCharFromInt(context_data_val));
-                        context_data_val = 0;
-                        break;
-                    }
-                }
-                return context_data.join("");
+                value = 2;
+                for (i = 0; i < context_numBits; i++) { context_data_val = (context_data_val << 1) | (value & 1); if (context_data_position == bitsPerChar - 1) { context_data_position = 0; context_data.push(getCharFromInt(context_data_val)); context_data_val = 0; } else { context_data_position++; } value = value >> 1; }
+                while (true) { context_data_val = (context_data_val << 1); if (context_data_position == bitsPerChar - 1) { context_data.push(getCharFromInt(context_data_val)); break; } else context_data_position++; }
+                return context_data.join('');
             }
-
             function _decompress(length, resetValue, getNextValue) {
-                var dictionary = [],
-                    enlargeIn = 4,
-                    dictSize = 4,
-                    numBits = 3,
-                    entry = "",
-                    result = [],
-                    i, w, c, errorCount = 0;
-                for (i = 0; i < 3; i++) dictionary[i] = i;
-                var bits = 0,
-                    maxpower = Math.pow(2, 2),
-                    power = 1,
-                    next, data_val = getNextValue(),
-                    data_position = resetValue;
-                while (power !== maxpower) {
-                    var resb = data_val & data_position;
-                    data_position >>= 1;
-                    if (data_position === 0) {
-                        data_position = resetValue;
-                        data_val = getNextValue();
-                    }
-                    bits = (resb !== 0) ? bits | power : bits;
-                    power <<= 1;
+                var dictionary = [], next, enlargeIn = 4, dictSize = 4, numBits = 3, entry = "", result = [], i, w, bits, resb, maxpower, power, c,
+                    data = { val: getNextValue(0), position: resetValue, index: 1 };
+                for (i = 0; i < 3; i += 1) dictionary[i] = i;
+                bits = 0; maxpower = Math.pow(2, 2); power = 1;
+                while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+                switch (next = bits) {
+                    case 0: bits = 0; maxpower = Math.pow(2, 8); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } c = f(bits); break;
+                    case 1: bits = 0; maxpower = Math.pow(2, 16); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } c = f(bits); break;
+                    case 2: return "";
                 }
-                switch (bits) {
-                    case 0:
-                        bits = 0;
-                        maxpower = Math.pow(2, 8);
-                        power = 1;
-                        while (power !== maxpower) {
-                            resb = data_val & data_position;
-                            data_position >>= 1;
-                            if (data_position === 0) { data_position = resetValue; data_val = getNextValue(); }
-                            bits = (resb !== 0) ? bits | power : bits;
-                            power <<= 1;
-                        }
-                        c = f(bits);
-                        break;
-                    case 1:
-                        bits = 0;
-                        maxpower = Math.pow(2, 16);
-                        power = 1;
-                        while (power !== maxpower) {
-                            resb = data_val & data_position;
-                            data_position >>= 1;
-                            if (data_position === 0) { data_position = resetValue; data_val = getNextValue(); }
-                            bits = (resb !== 0) ? bits | power : bits;
-                            power <<= 1;
-                        }
-                        c = f(bits);
-                        break;
-                    case 2:
-                        return "";
-                }
-                dictionary[3] = c;
-                w = c;
-                result.push(c);
+                dictionary[3] = c; w = c; result.push(c);
                 while (true) {
-                    if (errorCount++ > 50000) return result.join("");
-                    bits = 0;
-                    maxpower = Math.pow(2, numBits);
-                    power = 1;
-                    while (power !== maxpower) {
-                        resb = data_val & data_position;
-                        data_position >>= 1;
-                        if (data_position === 0) { data_position = resetValue; data_val = getNextValue(); }
-                        bits = (resb !== 0) ? bits | power : bits;
-                        power <<= 1;
+                    if (data.index > length) return "";
+                    bits = 0; maxpower = Math.pow(2, numBits); power = 1;
+                    while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; }
+                    switch (c = bits) {
+                        case 0: bits = 0; maxpower = Math.pow(2, 8); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } dictionary[dictSize++] = f(bits); c = dictSize - 1; enlargeIn--; break;
+                        case 1: bits = 0; maxpower = Math.pow(2, 16); power = 1; while (power != maxpower) { resb = data.val & data.position; data.position >>= 1; if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); } bits |= (resb > 0 ? 1 : 0) * power; power <<= 1; } dictionary[dictSize++] = f(bits); c = dictSize - 1; enlargeIn--; break;
+                        case 2: return result.join('');
                     }
-                    switch ((c = bits)) {
-                        case 0:
-                            bits = 0;
-                            maxpower = Math.pow(2, 8);
-                            power = 1;
-                            while (power !== maxpower) {
-                                resb = data_val & data_position;
-                                data_position >>= 1;
-                                if (data_position === 0) { data_position = resetValue; data_val = getNextValue(); }
-                                bits = (resb !== 0) ? bits | power : bits;
-                                power <<= 1;
-                            }
-                            dictionary[dictSize++] = f(bits);
-                            c = dictSize - 1;
-                            enlargeIn--;
-                            break;
-                        case 1:
-                            bits = 0;
-                            maxpower = Math.pow(2, 16);
-                            power = 1;
-                            while (power !== maxpower) {
-                                resb = data_val & data_position;
-                                data_position >>= 1;
-                                if (data_position === 0) { data_position = resetValue; data_val = getNextValue(); }
-                                bits = (resb !== 0) ? bits | power : bits;
-                                power <<= 1;
-                            }
-                            dictionary[dictSize++] = f(bits);
-                            c = dictSize - 1;
-                            enlargeIn--;
-                            break;
-                        case 2:
-                            return result.join("");
-                    }
-                    if (enlargeIn === 0) {
-                        enlargeIn = 2 << numBits;
-                        numBits++;
-                    }
-                    if (dictionary[c]) {
-                        entry = dictionary[c];
-                    } else {
-                        if (c === dictSize) {
-                            entry = w + w.charAt(0);
-                        } else {
-                            return null;
-                        }
-                    }
+                    if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
+                    if (dictionary[c]) { entry = dictionary[c]; } else { if (c === dictSize) { entry = w + w.charAt(0); } else { return null; } }
                     result.push(entry);
                     dictionary[dictSize++] = w + entry.charAt(0);
-                    enlargeIn--;
-                    w = entry;
-                    if (enlargeIn === 0) {
-                        enlargeIn = 2 << numBits;
-                        numBits++;
-                    }
+                    enlargeIn--; w = entry;
+                    if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
                 }
             }
-
-            function compressToEncodedURIComponent(str) {
-                if (str == null) return "";
-                return _compress(str, 6, function(a) { return keyStrUri.charAt(a); });
-            }
-
-            function decompressFromEncodedURIComponent(str) {
-                if (str == null) return "";
-                if (str === "") return null;
-                var input = [],
-                    ii;
-                for (ii = 0; ii < str.length; ii += 1) {
-                    var c = str.charAt(ii);
-                    var idx = keyStrUri.indexOf(c);
-                    if (idx < 0) return null;
-                    input.push(idx);
-                }
-                var resetValue = 32;
-                var getNextValue = function() { return input.length > 0 ? input.shift() : 0; };
-                return _decompress(input.length, resetValue, getNextValue);
-            }
-
             return {
-                compressToEncodedURIComponent: compressToEncodedURIComponent,
-                decompressFromEncodedURIComponent: decompressFromEncodedURIComponent
+                compressToEncodedURIComponent: function(input) { if (input == null) return ""; return _compress(input, 6, function(a) { return keyStrUriSafe.charAt(a); }); },
+                decompressFromEncodedURIComponent: function(input) {
+                    if (input == null) return ""; if (input == "") return null;
+                    input = input.replace(/ /g, "+");
+                    return _decompress(input.length, 32, function(index) { return getBaseValue(keyStrUriSafe, input.charAt(index)); });
+                }
             };
         })();
 
@@ -854,13 +651,14 @@
 
         function looksLikeGLSL(text) {
             if (!text || text.length < 10) return false;
-            // 检查是否包含过多的不可打印二进制字符
+            // 检查前 200 字符中可打印 ASCII 比例是否 > 30%
+            const checkLen = Math.min(text.length, 200);
             let printable = 0;
-            for (let i = 0; i < Math.min(text.length, 200); i++) {
+            for (let i = 0; i < checkLen; i++) {
                 const c = text.charCodeAt(i);
                 if (c >= 32 && c <= 126) printable++;
             }
-            if (printable < text.length * 0.3) return false;
+            if (printable < checkLen * 0.3) return false;
             // 检查是否包含 GLSL 关键特征
             return /void\s+mainImage\s*\(/.test(text) || /void\s+main\s*\(/.test(text);
         }
@@ -868,26 +666,11 @@
         function decodeShader(data) {
             if (!data) return '';
 
-            // 诊断信息
-            if (window.__DEBUG_SHADER) {
-                console.log('[decodeShader] 输入长度:', data.length, '前30字符:', data.slice(0, 30));
-            }
-
             // 尝试新版: lz-string 压缩
             try {
                 const r = LZString.decompressFromEncodedURIComponent(data);
-                if (r !== null && r !== '' && r !== undefined) {
-                    if (looksLikeGLSL(r)) {
-                        return r;
-                    } else if (window.__DEBUG_SHADER) {
-                        console.log('[decodeShader] lz解压成功但looksLikeGLSL拒绝, 前100:', JSON.stringify(r.slice(0, 100)));
-                    }
-                } else if (window.__DEBUG_SHADER) {
-                    console.log('[decodeShader] lz解压返回:', r === null ? 'null' : '空字符串');
-                }
-            } catch (e) {
-                if (window.__DEBUG_SHADER) console.log('[decodeShader] lz抛出异常:', e.message);
-            }
+                if (r && looksLikeGLSL(r)) return r;
+            } catch (e) { /* 不是 lz 格式，继续尝试 base64 */ }
 
             // 向后兼容: 旧版 base64
             const b64 = base64Decode(data);
@@ -1283,13 +1066,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         }
         shareBtn.addEventListener('click', () => doShare('preview'));
 
-        // ---- 分享：上传到服务器 ----
+        // 平台检测：Vercel vs Netlify
+        const API_PATH = window.location.hostname.includes('vercel')
+            ? '/api/shader'
+            : '/.netlify/functions/shader';
         async function uploadShader(code) {
             const label = '上传中...';
             uploadBtn.textContent = label;
             uploadBtn.disabled = true;
             try {
-                const res = await fetch('/.netlify/functions/shader', {
+                const res = await fetch(API_PATH, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: code }),
@@ -1332,7 +1118,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 // 从服务器获取
                 fetchLoader.classList.add('show');
                 try {
-                    const res = await fetch('/.netlify/functions/shader?id=' + encodeURIComponent(params.id));
+                    const res = await fetch(API_PATH + '?id=' + encodeURIComponent(params.id));
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     shaderCode = data.code || '';
@@ -1367,9 +1153,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 pauseOffset = (n - startTime) - (lastTime ? lastTime - startTime : 0);
             }
         });
-
-        // 开启诊断日志（分享链接出问题时打开控制台查看）
-        window.__DEBUG_SHADER = true;
 
         // 自检：验证 lz-string 压缩解压是否正常
         const _t = 'void mainImage(out vec4 f){f=vec4(1);}';
