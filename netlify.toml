@@ -3,3 +3,9 @@
 
 [functions]
   directory = "netlify/functions"
+
+# 统一 API 路径：让前端始终调用 /api/shader
+[[redirects]]
+  from = "/api/shader"
+  to = "/.netlify/functions/shader"
+  status = 200

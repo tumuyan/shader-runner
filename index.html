@@ -1077,10 +1077,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         }
         shareBtn.addEventListener('click', () => doShare('preview'));
 
-        // 平台检测：Vercel vs Netlify
-        const API_PATH = window.location.hostname.includes('vercel')
-            ? '/api/shader'
-            : '/.netlify/functions/shader';
+        // 统一 API 路径（Netlify 通过重写规则映射到 /.netlify/functions/shader）
+        const API_PATH = '/api/shader';
         async function uploadShader(code) {
             const label = '上传中...';
             uploadBtn.textContent = label;
