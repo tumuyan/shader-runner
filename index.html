@@ -179,6 +179,40 @@
         #encodedUrlRow input:focus { border-color: #6af; }
         #encodedUrlRow input::selection { background: rgba(70,130,220,0.3); }
 
+        /* shader 文件选择器 */
+        #shaderFileRow {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            align-items: stretch;
+        }
+        #shaderFileRow select {
+            flex: 1;
+            background: #0d0d1a;
+            color: #8cf;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+            appearance: auto;
+        }
+        #shaderFileRow select:focus { border-color: #6af; }
+        .btn-file {
+            background: #1a2a3e;
+            color: #8cf;
+            border: 1px solid #335;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-file:hover { background: #2a3a5e; border-color: #6af; }
+
         .btn-decode {
             background: #3a2a4e;
             color: #b8a;
@@ -416,6 +450,11 @@
     <div id="inputOverlay">
         <label>粘贴 ShaderToy GLSL 代码（mainImage 函数体）</label>
         <textarea id="shaderCode" spellcheck="false"></textarea>
+        <!-- shader 文件选择器 -->
+        <div id="shaderFileRow">
+            <select id="shaderSelector"></select>
+            <button id="openFileBtn" class="btn-file">📂 打开文件</button>
+        </div>
         <div id="encodedUrlRow">
             <input id="encodedUrlInput" type="text" placeholder="点击「生成分享链接」生成 URL，或直接在此粘贴要解码的 URL..." spellcheck="false">
         </div>
@@ -431,6 +470,7 @@
             从 <a href="https://www.shadertoy.com/view/MdcSRj" target="_blank" style="color:#e8553a;">ShaderToy</a> 复制代码
             · <kbd>Ctrl+Enter</kbd> 应用 · <kbd>E</kbd> 切换编辑器 · 点右上角 <kbd>?</kbd> 查看帮助
         </div>
+        <input type="file" id="fileInput" accept=".glsl,.glsl.css,.frag,.vert,.txt" hidden>
     </div>
 
     <div id="toast"></div>
@@ -630,6 +670,7 @@
                 mode: h.mode || p.get('mode') || 'edit',
                 code: h.code || p.get('code') || '',
                 id: h.id || p.get('id') || '',
+                src: p.get('src') || '',
             };
         }
 
@@ -982,6 +1023,103 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         }
         function closeEditor() { overlay.classList.remove('open'); }
 
+        // ============================================================
+        // shader 文件选择器
+        // ============================================================
+        // 内置 shader 文件列表（路径相对于站点根目录）
+        const BUILTIN_SHADERS = [
+            { path: 'shader/shader.glsl.css',       label: 'Synthwave Sunset' },
+            { path: 'shader/aurora-paint.glsl.css', label: 'Aurora Paint' },
+        ];
+        let currentSrc = '';   // 当前 shader 的来源文件路径，空 = 非文件来源
+
+        const shaderSelector = document.getElementById('shaderSelector');
+        const openFileBtn = document.getElementById('openFileBtn');
+        const fileInput = document.getElementById('fileInput');
+
+        // 填充下拉列表（空选项在最前）
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.textContent = '— 选择内置 shader —';
+        shaderSelector.appendChild(emptyOpt);
+        BUILTIN_SHADERS.forEach((s, i) => {
+            const opt = document.createElement('option');
+            opt.value = s.path;
+            opt.textContent = s.label;
+            shaderSelector.appendChild(opt);
+        });
+
+        // 清空文件来源标记（恢复下拉到空选项）
+        function clearFileSource() {
+            currentSrc = '';
+            shaderSelector.selectedIndex = 0;
+            syncUrlInput();
+        }
+
+        // 用户手动编辑 → 清除文件来源标记
+        textarea.addEventListener('input', () => {
+            if (currentSrc) clearFileSource();
+        });
+
+        // 加载 shader 文件（同时更新下拉选中项）
+        async function loadShaderFile(path) {
+            if (!path) return;
+            fetchLoader.classList.add('show');
+            try {
+                const res = await fetch(path);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const code = await res.text();
+                textarea.value = code;
+                currentSrc = path;
+                // 同步下拉选中项
+                for (const opt of shaderSelector.options) {
+                    opt.selected = opt.value === path;
+                }
+                syncUrlInput();
+                applyShader(code);
+                showToast('✓ 已加载: ' + path);
+            } catch (err) {
+                console.error('加载 shader 文件失败', err);
+                showToast('✗ 加载失败: ' + path);
+            } finally {
+                fetchLoader.classList.remove('show');
+            }
+        }
+
+        // 下拉列表切换
+        shaderSelector.addEventListener('change', () => {
+            const path = shaderSelector.value;
+            if (path) {
+                loadShaderFile(path);
+            } else if (currentSrc) {
+                // 切到空选项 → 清除文件来源，恢复默认 shader
+                clearFileSource();
+                textarea.value = DEFAULT_SHADER;
+                syncUrlInput();
+                applyShader(DEFAULT_SHADER);
+            }
+        });
+
+        // "打开文件" 按钮 → 触发本地文件选择
+        openFileBtn.addEventListener('click', () => fileInput.click());
+
+        // 本地文件选择后读取内容
+        fileInput.addEventListener('change', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            try {
+                const code = await file.text();
+                textarea.value = code;
+                clearFileSource();
+                applyShader(code);
+                showToast('✓ 已打开: ' + file.name);
+            } catch (err) {
+                console.error('读取文件失败', err);
+                showToast('✗ 读取文件失败');
+            }
+            fileInput.value = '';
+        });
+
         function applyShader(code) {
             currentCode = code;
             if (createProgram(code)) {
@@ -996,9 +1134,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         editHintBtn.addEventListener('click', () => {
             document.getElementById('helpModal').classList.add('open');
         });
-        applyBtn.addEventListener('click', () => applyShader(textarea.value));
+        applyBtn.addEventListener('click', () => {
+            if (currentSrc) clearFileSource();
+            applyShader(textarea.value);
+        });
         closeBtn.addEventListener('click', closeEditor);
-        defaultBtn.addEventListener('click', () => { textarea.value = DEFAULT_SHADER; });
+        defaultBtn.addEventListener('click', () => {
+            textarea.value = DEFAULT_SHADER;
+            if (currentSrc) clearFileSource();
+        });
 
         // ---- 编码 URL 同步 ----
         const encodedUrlInput = document.getElementById('encodedUrlInput');
@@ -1010,6 +1154,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 encodedUrlInput.value = '';
                 return;
             }
+            // 如果当前 shader 来自内置文件，生成 ?src= 短链接
+            if (currentSrc) {
+                const base = window.location.origin + window.location.pathname;
+                encodedUrlInput.value = base + '?mode=preview&src=' + currentSrc;
+                return;
+            }
             const url = buildShareUrl('preview', code);
             encodedUrlInput.value = url;
         }
@@ -1017,7 +1167,23 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // 「生成分享链接」按钮同时更新文本框
         shareUrlBtn.addEventListener('click', () => {
             syncUrlInput();
-            doShare('edit');
+            const code = textarea.value.trim();
+            if (currentSrc) {
+                // 来自内置文件 → 复制 ?src= 短链接
+                const base = window.location.origin + window.location.pathname;
+                const url = base + '?mode=preview&src=' + currentSrc;
+                navigator.clipboard.writeText(url).then(() => {
+                    showToast('✓ 文件链接已复制');
+                }).catch(() => {
+                    const inp = document.createElement('input');
+                    inp.value = url; document.body.appendChild(inp);
+                    inp.select(); document.execCommand('copy');
+                    document.body.removeChild(inp);
+                    showToast('✓ 链接已复制');
+                });
+            } else {
+                doShare('edit');
+            }
         });
 
         // ---- 解码测试按钮 ----
@@ -1043,6 +1209,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             // 尝试解码
             const decoded = decodeShader(decodeURIComponent(extracted));
             if (decoded) {
+                if (currentSrc) clearFileSource();
                 textarea.value = decoded;
                 syncUrlInput();
                 showToast('✓ 解码成功');
@@ -1142,6 +1309,25 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 } finally {
                     fetchLoader.classList.remove('show');
                 }
+            } else if (params.src) {
+                // 从本地 .glsl 文件加载
+                fetchLoader.classList.add('show');
+                try {
+                    const res = await fetch(params.src);
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    shaderCode = await res.text();
+                    currentSrc = params.src;
+                    // 同步下拉选中项
+                    for (const opt of shaderSelector.options) {
+                        opt.selected = opt.value === params.src;
+                    }
+                    console.log('📄 已加载 shader 文件:', params.src);
+                } catch (err) {
+                    console.error('加载 shader 文件失败', err);
+                    showToast('✗ 加载失败：' + params.src);
+                } finally {
+                    fetchLoader.classList.remove('show');
+                }
             }
 
             if (!shaderCode) shaderCode = DEFAULT_SHADER;
@@ -1174,7 +1360,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const _d = LZString.decompressFromEncodedURIComponent(_c);
         window.__LZ_OK = _d === _t;
         console.log('✅ ShaderToy 运行器 | 模式:', isPreview ? '预览' : '编辑');
-        console.log('📎 数据来源:', params.code ? 'URL hash (压缩)' : params.id ? '服务器' : '默认');
+        console.log('📎 数据来源:', params.code ? 'URL hash (压缩)' : params.id ? '服务器' : params.src ? '文件: ' + params.src : '默认');
         console.log('🔧 lz-string 自检:', window.__LZ_OK ? '通过' : '失败');
     </script>
 </body>

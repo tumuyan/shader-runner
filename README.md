@@ -6,7 +6,9 @@
 
 - **编辑模式** — 粘贴 ShaderToy 的 `mainImage` GLSL 代码，实时编译运行
 - **预览模式** — 全屏渲染，无任何 UI 干扰，通过 URL 参数控制
-- **本地压缩分享** — lz-string 压缩 shader 代码到 URL hash 中，无需服务器存储
+- **内置 shader 文件选择器** — 下拉列表切换内置 shader，切换即时生效
+- **本地文件打开** — 从本地选择 `.glsl` / `.frag` 文件直接加载
+- **本地压缩分享** — lz-string 压缩 shader 代码到 URL hash 中，无需服务器存储；来自内置文件的分享自动生成 `?src=` 短链接
 - **服务端发布** — 使用 Netlify Blob Storage 存储，URL 只含 8 位短 ID
 - **解码测试** — 将分享的 URL 或编码数据还原回编辑框
 - **自动暂停** — 页面不可见时自动暂停，恢复后继续
@@ -30,12 +32,14 @@ npx serve .
 | `mode` | 页面模式：`edit`（默认）或 `preview` | `?mode=preview` |
 | `code` | lz-string 压缩的 shader 代码（放在 hash 中） | `#code=L8RjIMoz...` |
 | `id` | 服务端存储的 shader ID | `#id=Ab3xK9mQ` |
+| `src` | 加载内置 shader 文件路径（如 `shader/xxx.glsl.css`） | `?src=shader/shader.glsl.css` |
 
 ### 生成分享链接
 
 ```
 https://your-site.com/shader.html?mode=preview#code=L8RjIMoz...
 https://your-site.com/shader.html?mode=edit#code=L8RjIMoz...
+https://your-site.com/shader.html?mode=preview&src=shader/shader.glsl.css
 ```
 
 ## 部署
@@ -71,17 +75,18 @@ ntl dev
 
 ```
 /
-├── index.html           # 主页面
-├── shader.glsl          # 示例 shader
-├── README.md            # 文档
-├── vercel.json          # Vercel 部署配置
+├── index.html                       # 主页面（含所有逻辑）
+├── shader/
+│   └── *.glsl.css              # 内置 shader 示例
+├── README.md                        # 文档
+├── vercel.json                      # Vercel 部署配置
 ├── api/
-│   └── shader.js        # Vercel Serverless Function
-├── netlify.toml         # Netlify 部署配置
-├── package.json         # 依赖声明（Netlify）
+│   └── shader.js                    # Vercel Serverless Function
+├── netlify.toml                     # Netlify 部署配置
+├── package.json                     # 依赖声明（Netlify）
 └── netlify/
     └── functions/
-        └── shader.js    # Netlify Function
+        └── shader.js                # Netlify Function
 ```
 
 ## 工作原理
