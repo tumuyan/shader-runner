@@ -1,10 +1,27 @@
 // netlify/functions/shader.js
-// 服务端存储 Shader 代码 — 使用 Netlify Blob Storage
+// 服务端存储 Shader 代码 — 首选 Netlify Blob Storage, 回退到内存存储
 // API:
 //   POST /    → body: { code }     → 返回 { id }
 //   GET  /?id=xxx                  → 返回 { id, code }
 
-const { getStore } = require('@netlify/blobs');
+let store = null;
+let memoryStore = null; // in-memory 回退
+
+async function getStoreInstance() {
+  if (store) return store;
+  try {
+    const { getStore } = require('@netlify/blobs');
+    store = getStore('shaders');
+    // 快速探测 Blob Storage 是否可用
+    try { await store.get('__probe__', { type: 'text' }); } catch (e) { /* 可忽略 */ }
+    console.log('[shader] 使用 Netlify Blob Storage');
+    return store;
+  } catch (e) {
+    console.warn('[shader] Blob Storage 不可用，回退到内存存储:', e.message);
+    memoryStore = new Map();
+    return null;
+  }
+}
 
 // 生成短 ID (8 位字母数字)
 function generateId() {
@@ -30,7 +47,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const store = getStore('shaders');
+    const blobStore = await getStoreInstance();
 
     if (event.httpMethod === 'POST') {
       // --- 存储 ---
@@ -40,7 +57,11 @@ exports.handler = async (event, context) => {
       }
 
       const id = generateId();
-      await store.set(id, JSON.stringify({ code }));
+      if (blobStore) {
+        await blobStore.set(id, JSON.stringify({ code }));
+      } else {
+        memoryStore.set(id, JSON.stringify({ code }));
+      }
       return { statusCode: 200, headers, body: JSON.stringify({ id }) };
 
     } else if (event.httpMethod === 'GET') {
@@ -50,7 +71,12 @@ exports.handler = async (event, context) => {
         return { statusCode: 400, headers, body: JSON.stringify({ error: '缺少 id 参数' }) };
       }
 
-      const raw = await store.get(id, { type: 'text' });
+      let raw;
+      if (blobStore) {
+        raw = await blobStore.get(id, { type: 'text' });
+      } else {
+        raw = memoryStore.get(id) || null;
+      }
       if (!raw) {
         return { statusCode: 404, headers, body: JSON.stringify({ error: '未找到该 shader' }) };
       }
