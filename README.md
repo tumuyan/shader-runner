@@ -34,6 +34,7 @@ npx serve .
 | `code` | lz-string 压缩的 shader 代码（放在 hash 中） | `#code=L8RjIMoz...` |
 | `id` | 服务端存储的 shader ID | `#id=Ab3xK9mQ` |
 | `src` | 加载内置 shader 文件路径 | `?src=shader/synthwave.shader.js` |
+| `maxSize` | 限制渲染分辨率最大边长（像素），降低 GPU 开销，画面自动缩放填满 | `?maxSize=720` |
 
 ### 生成分享链接
 

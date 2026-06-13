@@ -122,6 +122,39 @@
             border-color: #444;
         }
 
+        .maxsize-group {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 4px;
+        }
+        .maxsize-group input {
+            width: 58px;
+            background: rgba(0,0,0,0.5);
+            color: #888;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 7px 8px;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            outline: none;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .maxsize-group input:focus {
+            border-color: #6af;
+            color: #6af;
+            background: rgba(70,130,220,0.1);
+        }
+        .maxsize-group input:hover {
+            border-color: #555;
+            color: #aaa;
+        }
+        /* 预览模式隐藏分辨率控制 */
+        body.preview-mode .maxsize-group { display: none; }
+        /* 预览模式隐藏分辨率控制 */
+        body.preview-mode .maxsize-group { display: none; }
+
         /* 编辑器覆盖层 */
         #inputOverlay {
             position: fixed;
@@ -444,6 +477,9 @@
     <button class="top-btn share-online" id="shareServerBtn">发布</button>
     <button class="top-btn edit-btn" id="editBtn">编辑</button>
         <button class="top-btn help-btn" id="editHintBtn">?</button>
+        <span class="maxsize-group">
+            <input type="number" id="maxSizeInput" value="720" min="0" max="8192" step="1" placeholder="720p" title="渲染分辨率限制（像素），0 为不限">
+        </span>
     </div>
 
     <!-- 编辑器 -->
@@ -671,6 +707,7 @@
                 code: h.code || p.get('code') || '',
                 id: h.id || p.get('id') || '',
                 src: p.get('src') || '',
+                maxSize: parseInt(p.get('maxSize'), 10) || 0,
             };
         }
 
@@ -757,7 +794,12 @@
 
         function buildServerUrl(mode, id) {
             const base = window.location.origin + window.location.pathname;
-            return base + '?mode=' + mode + '#id=' + id;
+            return base + '?mode=' + mode + '#id=' + id + maxSizeQuery();
+        }
+
+        function maxSizeQuery() {
+            const v = parseInt(maxSizeInput.value, 10);
+            return v > 0 ? '&maxSize=' + v : '';
         }
 
         // ============================================================
@@ -912,8 +954,19 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const mouse = {x:0,y:0,bx:0,by:0,down:false};
         let lastTime = 0, currentCode = '';
         function resize() {
-            const dpr = Math.min(window.devicePixelRatio, 2);
-            const w = canvas.clientWidth * dpr, h = canvas.clientHeight * dpr;
+            const cw = canvas.clientWidth, ch = canvas.clientHeight;
+            const maxSize = parseInt(maxSizeInput.value, 10) || 0;
+            let w, h;
+            if (maxSize > 0) {
+                // 限制渲染分辨率，较大边不超过 maxSize，画布 CSS 仍保持填满页面
+                const scale = Math.min(1, maxSize / Math.max(cw, ch));
+                w = Math.round(cw * scale);
+                h = Math.round(ch * scale);
+            } else {
+                const dpr = Math.min(window.devicePixelRatio, 2);
+                w = cw * dpr;
+                h = ch * dpr;
+            }
             if (canvas.width !== w || canvas.height !== h) {
                 canvas.width = w; canvas.height = h;
                 gl.viewport(0, 0, w, h);
@@ -1066,6 +1119,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const shaderSelector = document.getElementById('shaderSelector');
         const openFileBtn = document.getElementById('openFileBtn');
         const fileInput = document.getElementById('fileInput');
+        const maxSizeInput = document.getElementById('maxSizeInput');
+        // 从 URL 参数初始化，无参数时默认 720
+        maxSizeInput.value = params.maxSize || 720;
+        maxSizeInput.addEventListener('input', resize);
 
         // 填充下拉列表（空选项在最前）
         function populateShaderDropdown() {
@@ -1183,10 +1240,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             // 如果当前 shader 来自内置文件，生成 ?src= 短链接
             if (currentSrc) {
                 const base = window.location.origin + window.location.pathname;
-                encodedUrlInput.value = base + '?mode=preview&src=' + currentSrc;
+                encodedUrlInput.value = base + '?mode=preview' + maxSizeQuery() + '&src=' + currentSrc;
                 return;
             }
-            const url = buildShareUrl('preview', code);
+            const url = buildShareUrl('preview', code) + maxSizeQuery();
             encodedUrlInput.value = url;
         }
 
@@ -1197,7 +1254,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (currentSrc) {
                 // 来自内置文件 → 复制 ?src= 短链接
                 const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview&src=' + currentSrc;
+                const url = base + '?mode=preview' + maxSizeQuery() + '&src=' + currentSrc;
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1257,7 +1314,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         // ---- 分享：压缩到 URL hash ----
         function doShare(mode) {
-            const url = buildShareUrl(mode, textarea.value);
+            const url = buildShareUrl(mode, textarea.value) + maxSizeQuery();
             navigator.clipboard.writeText(url).then(() => {
                 showToast('✓ ' + (mode==='preview'?'预览':'编辑') + ' 链接已复制');
             }).catch(() => {
@@ -1272,7 +1329,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (currentSrc) {
                 // 来自内置文件 → 复制 ?src= 短链接
                 const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview&src=' + currentSrc;
+                const url = base + '?mode=preview' + maxSizeQuery() + '&src=' + currentSrc;
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1403,6 +1460,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         window.__LZ_OK = _d === _t;
         console.log('✅ ShaderToy 运行器 | 模式:', isPreview ? '预览' : '编辑');
         console.log('📎 数据来源:', params.code ? 'URL hash (压缩)' : params.id ? '服务器' : params.src ? '文件: ' + params.src : '默认');
+        if (params.maxSize) console.log('🔒 渲染分辨率限制:', params.maxSize + 'px (最大边)');
         console.log('🔧 lz-string 自检:', window.__LZ_OK ? '通过' : '失败');
     </script>
 </body>
