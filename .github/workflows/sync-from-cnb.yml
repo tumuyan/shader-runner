@@ -1,0 +1,24 @@
+name: Sync from CNB Mirror
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # 每小时运行一次
+  workflow_dispatch:       # 允许手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add CNB remote and sync
+        run: |
+          git remote add cnb https://cnb.cool/ai-zoomer/shader-runner
+          git fetch cnb main
+          # 尝试将 CNB 的 main 合并到 GitHub 的 main
+          # 若历史不一致导致 push 失败，action 会报错，不会覆盖远程
+          git push origin refs/remotes/cnb/main:refs/heads/main
