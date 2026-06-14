@@ -3,7 +3,8 @@
   d.push({
     path: 'shader/aurora-paint.shader.js',
     label: 'Aurora Paint',
-    code: `// https://www.shadertoy.com/view/N3lXzS
+    code: `
+// https://www.shadertoy.com/view/N3lXzS
 // Aurora Paint
 // By Noztol
 

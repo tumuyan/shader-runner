@@ -3,7 +3,9 @@
   d.push({
     path: 'shader/synthwave.shader.js',
     label: 'Synthwave Sunset',
-    code: `//#define AA 4
+    code: `
+// https://www.shadertoy.com/view/tsScRK    
+//#define AA 4
 //#define VAPORWAVE
 //#define stereo 1. // -1. for cross-eyed (defaults to parallel view)
 #define speed 10. 
