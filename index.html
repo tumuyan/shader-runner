@@ -128,12 +128,35 @@
             border-color: #444;
         }
 
-        .maxsize-group {
+        /* 信息行（分辨率、帧率） */
+        .info-group {
             display: inline-flex;
+            gap: 6px;
             align-items: center;
         }
-        .maxsize-group input {
-            width: 80px;
+        .info-tag {
+            font-size: 12px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            color: #fff;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 7px 10px;
+            min-width: 70px;
+            text-align: center;
+            white-space: nowrap;
+            user-select: none;
+        }
+        body.preview-mode .info-group { display: none; }
+
+        /* 设置行（分辨率限制、帧率上限） */
+        .settings-group {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .set-input {
+            width: 70px;
             background: rgba(0,0,0,0.5);
             color: #fff;
             border: 1px solid #333;
@@ -147,38 +170,21 @@
             cursor: pointer;
             -moz-appearance: textfield;
         }
-        .maxsize-group input::-webkit-inner-spin-button,
-        .maxsize-group input::-webkit-outer-spin-button {
+        .set-input::-webkit-inner-spin-button,
+        .set-input::-webkit-outer-spin-button {
             -webkit-appearance: none;
             margin: 0;
         }
-        .maxsize-group input:focus {
+        .set-input:focus {
             border-color: #6af;
             color: #6af;
             background: rgba(70,130,220,0.1);
         }
-        .maxsize-group input:hover {
+        .set-input:hover {
             border-color: #555;
             color: #aaa;
         }
-        /* 预览模式隐藏分辨率控制 */
-        body.preview-mode .maxsize-group { display: none; }
-        body.preview-mode .maxsize-group { display: none; }
-
-        /* FPS 显示 */
-        #fpsDisplay {
-            font-size: 11px;
-            font-family: 'JetBrains Mono', 'Consolas', monospace;
-            color: #fff;
-            background: rgba(0,0,0,0.5);
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 5px 10px;
-            text-align: center;
-            white-space: nowrap;
-            user-select: none;
-        }
-        body.preview-mode #fpsDisplay { display: none; }
+        body.preview-mode .settings-group { display: none; }
 
         /* 编辑器覆盖层 */
         #inputOverlay {
@@ -237,72 +243,40 @@
         #encodedUrlRow input:focus { border-color: #6af; }
         #encodedUrlRow input::selection { background: rgba(70,130,220,0.3); }
 
-        /* shader 文件选择器 */
-        #shaderFileRow {
-            display: flex;
-            gap: 8px;
-            margin-top: 10px;
-            align-items: stretch;
-        }
-        #shaderFileRow select {
-            flex: 1;
-            background: #0d0d1a;
-            color: #8cf;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 13px;
-            outline: none;
-            cursor: pointer;
-            appearance: auto;
-        }
-        #shaderFileRow select:focus { border-color: #6af; }
-        .btn-file {
-            background: #1a2a3e;
-            color: #8cf;
-            border: 1px solid #335;
-            border-radius: 8px;
-            padding: 10px 18px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-        .btn-file:hover { background: #2a3a5e; border-color: #6af; }
-
-        .btn-decode {
-            background: #3a2a4e;
-            color: #b8a;
-            border: 1px solid #555;
-            border-radius: 8px;
-            padding: 10px 18px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-        .btn-decode:hover {
-            background: #4a3a5e;
-            color: #d8c;
-            border-color: #b8a;
-        }
-
         .overlay-actions {
             display: flex;
-            gap: 12px;
-            margin-top: 12px; flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+            align-items: stretch;
         }
-        .overlay-actions button {
+        .overlay-btn {
             padding: 10px 22px;
             border: none; border-radius: 6px;
             font-size: 13px; font-weight: 600;
             cursor: pointer; transition: all 0.2s;
             letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            white-space: nowrap;
         }
+        .overlay-sel {
+            padding: 10px 22px;
+            border: 1px solid #335;
+            border-radius: 6px;
+            font-size: 13px; font-weight: 600;
+            cursor: pointer;
+            background: #1a2a3e;
+            color: #8cf;
+            outline: none;
+            appearance: auto;
+            min-width: 0;
+        }
+        .overlay-sel:focus { border-color: #6af; }
         .btn-apply   { background: #c94a2e; color: #fff; }
         .btn-apply:hover { background: #b53e24; }
+        .btn-file    { background: #1a2a3e; color: #8cf; border: 1px solid #335; }
+        .btn-file:hover { background: #2a3a5e; border-color: #6af; }
         .btn-share   { background: #3a5a7a; color: #bcd; }
         .btn-share:hover { background: #4a6a8a; color: #ddf; }
         .btn-upload  { background: #3a5a7a; color: #bcd; }
@@ -504,9 +478,13 @@
             <button class="top-btn edit-btn" id="editBtn">编辑</button>
             <button class="top-btn help-btn" id="editHintBtn">?</button>
         </div>
-        <div id="fpsDisplay">0 FPS</div>
-        <div class="maxsize-group">
-            <input type="number" id="maxSizeInput" value="2560" min="0" max="8192" step="1" placeholder="2560p" title="渲染分辨率限制（像素），0 为不限">
+        <div class="info-group">
+            <span class="info-tag" id="resDisplay">0×0</span>
+            <span class="info-tag" id="fpsDisplay">0 FPS</span>
+        </div>
+        <div class="settings-group">
+            <input class="set-input" type="number" id="maxSizeInput" value="2560" min="0" max="8192" step="1" placeholder="2560p" title="渲染分辨率限制（像素），0 为不限">
+            <input class="set-input" type="number" id="fpsCapInput" value="0" min="0" max="360" step="1" placeholder="FPS" title="帧率上限（≤0 则不限制）">
         </div>
     </div>
 
@@ -514,21 +492,18 @@
     <div id="inputOverlay">
         <label>粘贴 ShaderToy GLSL 代码（mainImage 函数体）</label>
         <textarea id="shaderCode" spellcheck="false"></textarea>
-        <!-- shader 文件选择器 -->
-        <div id="shaderFileRow">
-            <select id="shaderSelector"></select>
-            <button id="openFileBtn" class="btn-file">📂 打开文件</button>
-        </div>
         <div id="encodedUrlRow">
             <input id="encodedUrlInput" type="text" placeholder="点击「生成分享链接」生成 URL，或直接在此粘贴要解码的 URL..." spellcheck="false">
         </div>
         <div class="overlay-actions">
-            <button class="btn-apply" id="applyBtn">应用</button>
-            <button class="btn-share" id="shareUrlBtn">分享链接</button>
-            <button class="btn-upload" id="uploadBtn">发布</button>
-            <button class="btn-decode" id="decodeBtn">解码</button>
-            <button class="btn-close" id="closeBtn">关闭</button>
-            <button class="btn-default" id="defaultBtn">重置</button>
+            <select class="overlay-sel" id="shaderSelector"></select>
+            <button class="overlay-btn btn-file" id="openFileBtn">📂</button>
+            <button class="overlay-btn btn-apply" id="applyBtn">应用</button>
+            <button class="overlay-btn btn-share" id="shareUrlBtn">分享</button>
+            <button class="overlay-btn btn-upload" id="uploadBtn">发布</button>
+            <button class="overlay-btn btn-decode" id="decodeBtn">解码</button>
+            <button class="overlay-btn btn-close" id="closeBtn">关闭</button>
+            <button class="overlay-btn btn-default" id="defaultBtn">重置</button>
         </div>
         <div class="hint">
             从 <a href="https://www.shadertoy.com/view/MdcSRj" target="_blank" style="color:#e8553a;">ShaderToy</a> 复制代码
@@ -736,6 +711,7 @@
                 id: h.id || p.get('id') || '',
                 src: p.get('src') || '',
                 maxSize: parseInt(p.get('maxSize'), 10) || 0,
+                fpsCap: parseInt(p.get('fpsCap'), 10) || 0,
             };
         }
 
@@ -822,12 +798,16 @@
 
         function buildServerUrl(mode, id) {
             const base = window.location.origin + window.location.pathname;
-            return base + '?mode=' + mode + '#id=' + id + maxSizeQuery();
+            return base + '?mode=' + mode + '#id=' + id + maxSizeQuery() + fpsCapQuery();
         }
 
         function maxSizeQuery() {
             const v = parseInt(maxSizeInput.value, 10);
             return v > 0 ? '&maxSize=' + v : '';
+        }
+        function fpsCapQuery() {
+            const v = parseInt(fpsCapInput.value, 10);
+            return v > 0 ? '&fpsCap=' + v : '';
         }
 
         // ============================================================
@@ -838,10 +818,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord / iResolution.xy;
     float time = iTime;
     vec2 p = (uv * 2.0 - 1.0) * vec2(iResolution.x / iResolution.y, 1.0);
+    p.y += 1.0;  // 中心移至画面底部中央
     float r = length(p);
     float a = atan(p.y, p.x);
     float v = sin(r * 10.0 - time * 2.0) * 0.5 + 0.5;
-    float h = a / 6.2832 + 0.5;
+    float h = abs(a) / 3.1416;  // 180° 完成颜色渐变
     vec3 col = 0.5 + 0.5 * cos(time * 0.5 + h + vec3(0.0, 2.0, 4.0));
     col *= v;
     fragColor = vec4(col, 1.0);
@@ -979,8 +960,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // 5. 运行时状态
         // ============================================================
         let startTime = performance.now()/1000, frameCount = 0, paused = false, pauseOffset = 0;
+        let frameCap = 0;  // 帧率上限（0=不限）
+        let frameAccum = 0;  // rAF 时间累加器，微秒级精度
         let fpsTimer = 0, fpsAccum = 0;
         const fpsDisplay = document.getElementById('fpsDisplay');
+        const resDisplay = document.getElementById('resDisplay');
         const mouse = {x:0,y:0,bx:0,by:0,down:false};
         let lastTime = 0, currentCode = '';
         function resize() {
@@ -1000,6 +984,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (canvas.width !== w || canvas.height !== h) {
                 canvas.width = w; canvas.height = h;
                 gl.viewport(0, 0, w, h);
+                resDisplay.textContent = w + '×' + h;
             }
         }
 
@@ -1009,6 +994,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             const delta = lastTime ? now - lastTime : 0.016;
             lastTime = now;
             if (!paused) {
+                // 帧率控制—高精度累加器（rAF time 为 DOMHighResTimeStamp，微秒级精度）
+                if (frameCap > 0) {
+                    frameAccum = Math.min(frameAccum + delta, 1);  // 防 catch-up 爆帧
+                    if (frameAccum < 1 / frameCap) {
+                        requestAnimationFrame(render);
+                        return;
+                    }
+                    frameAccum -= 1 / frameCap;
+                }
                 const total = (now - startTime) - pauseOffset;
                 frameCount++;
                 fpsAccum++;
@@ -1116,6 +1110,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // 配置常量
         // ============================================================
         const MAX_SIZE_DEFAULT = 0;  // 默认渲染分辨率上限
+        const FPS_CAP_DEFAULT = 0;   // 默认帧率上限（≤0 则不限制）
 
         // ============================================================
         // 内置 shader — 通过动态 <script> 加载 .shader.js 文件（不受 CORS 限制）
@@ -1162,9 +1157,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const openFileBtn = document.getElementById('openFileBtn');
         const fileInput = document.getElementById('fileInput');
         const maxSizeInput = document.getElementById('maxSizeInput');
+        const fpsCapInput = document.getElementById('fpsCapInput');
         // 从 URL 参数初始化，无参数时默认
         maxSizeInput.value = params.maxSize || MAX_SIZE_DEFAULT;
+        fpsCapInput.value = params.fpsCap || FPS_CAP_DEFAULT;
+        frameCap = parseInt(fpsCapInput.value, 10) || 0;
         maxSizeInput.addEventListener('input', resize);
+        fpsCapInput.addEventListener('input', () => {
+            frameCap = parseInt(fpsCapInput.value, 10) || 0;
+        });
 
         // 填充下拉列表（空选项在最前）
         function populateShaderDropdown() {
@@ -1282,10 +1283,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             // 如果当前 shader 来自内置文件，生成 ?src= 短链接
             if (currentSrc) {
                 const base = window.location.origin + window.location.pathname;
-                encodedUrlInput.value = base + '?mode=preview' + maxSizeQuery() + '&src=' + currentSrc;
+                encodedUrlInput.value = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + '&src=' + currentSrc;
                 return;
             }
-            const url = buildShareUrl('preview', code) + maxSizeQuery();
+            const url = buildShareUrl('preview', code) + maxSizeQuery() + fpsCapQuery();
             encodedUrlInput.value = url;
         }
 
@@ -1296,7 +1297,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (currentSrc) {
                 // 来自内置文件 → 复制 ?src= 短链接
                 const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview' + maxSizeQuery() + '&src=' + currentSrc;
+                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + '&src=' + currentSrc;
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1356,7 +1357,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         // ---- 分享：压缩到 URL hash ----
         function doShare(mode) {
-            const url = buildShareUrl(mode, textarea.value) + maxSizeQuery();
+            const url = buildShareUrl(mode, textarea.value) + maxSizeQuery() + fpsCapQuery();
             navigator.clipboard.writeText(url).then(() => {
                 showToast('✓ ' + (mode==='preview'?'预览':'编辑') + ' 链接已复制');
             }).catch(() => {
@@ -1371,7 +1372,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (currentSrc) {
                 // 来自内置文件 → 复制 ?src= 短链接
                 const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview' + maxSizeQuery() + '&src=' + currentSrc;
+                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + '&src=' + currentSrc;
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1503,6 +1504,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         console.log('✅ ShaderToy 运行器 | 模式:', isPreview ? '预览' : '编辑');
         console.log('📎 数据来源:', params.code ? 'URL hash (压缩)' : params.id ? '服务器' : params.src ? '文件: ' + params.src : '默认');
         if (params.maxSize) console.log('🔒 渲染分辨率限制:', params.maxSize + 'px (最大边)');
+        if (params.fpsCap > 0) console.log('🎯 帧率上限:', params.fpsCap + ' FPS');
         console.log('🔧 lz-string 自检:', window.__LZ_OK ? '通过' : '失败');
     </script>
 </body>
