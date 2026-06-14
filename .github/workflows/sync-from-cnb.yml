@@ -3,7 +3,12 @@ name: Sync from CNB Mirror
 on:
   schedule:
     - cron: '0 * * * *'   # 每小时运行一次
-  workflow_dispatch:       # 允许手动触发
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '强制同步（覆盖 GitHub 历史，与 CNB 完全一致）'
+        type: boolean
+        default: false
 
 jobs:
   sync:
@@ -19,6 +24,10 @@ jobs:
         run: |
           git remote add cnb https://cnb.cool/ai-zoomer/shader-runner
           git fetch cnb main
-          # 尝试将 CNB 的 main 合并到 GitHub 的 main
-          # 若历史不一致导致 push 失败，action 会报错，不会覆盖远程
-          git push origin refs/remotes/cnb/main:refs/heads/main
+          # 定时触发时正常 push（失败则报错）
+          # 手动触发时可勾选"强制同步"来覆盖 GitHub 历史
+          PUSH_ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            PUSH_ARGS="--force"
+          fi
+          git push $PUSH_ARGS origin refs/remotes/cnb/main:refs/heads/main
