@@ -13,6 +13,8 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v4
@@ -24,6 +26,7 @@ jobs:
         run: |
           git remote add cnb https://cnb.cool/ai-zoomer/shader-runner
           git fetch cnb main
+          # actions/checkout 已用 GITHUB_TOKEN 配置了认证，push 可复用
           # 定时触发时正常 push（失败则报错）
           # 手动触发时可勾选"强制同步"来覆盖 GitHub 历史
           PUSH_ARGS=""
