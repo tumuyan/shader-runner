@@ -67,6 +67,12 @@
             right: 12px;
             z-index: 60;
             display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: flex-end;
+        }
+        .top-btn-row {
+            display: flex;
             gap: 6px;
             align-items: center;
         }
@@ -125,21 +131,26 @@
         .maxsize-group {
             display: inline-flex;
             align-items: center;
-            margin-left: 4px;
         }
         .maxsize-group input {
-            width: 58px;
+            width: 80px;
             background: rgba(0,0,0,0.5);
-            color: #888;
+            color: #fff;
             border: 1px solid #333;
             border-radius: 8px;
-            padding: 7px 8px;
+            padding: 7px 10px;
             font-size: 12px;
             font-family: 'JetBrains Mono', 'Consolas', monospace;
             outline: none;
             text-align: center;
             transition: all 0.2s;
             cursor: pointer;
+            -moz-appearance: textfield;
+        }
+        .maxsize-group input::-webkit-inner-spin-button,
+        .maxsize-group input::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
         .maxsize-group input:focus {
             border-color: #6af;
@@ -152,8 +163,22 @@
         }
         /* 预览模式隐藏分辨率控制 */
         body.preview-mode .maxsize-group { display: none; }
-        /* 预览模式隐藏分辨率控制 */
         body.preview-mode .maxsize-group { display: none; }
+
+        /* FPS 显示 */
+        #fpsDisplay {
+            font-size: 11px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            color: #fff;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 5px 10px;
+            text-align: center;
+            white-space: nowrap;
+            user-select: none;
+        }
+        body.preview-mode #fpsDisplay { display: none; }
 
         /* 编辑器覆盖层 */
         #inputOverlay {
@@ -471,15 +496,18 @@
     <div id="hud">按 <kbd>Esc</kbd> 关闭 · 拖拽旋转视角</div>
     <div id="fetchLoader"><span class="spinner"></span>正在获取 Shader...</div>
 
-    <!-- 顶栏按钮（仅编辑模式） -->
+    <!-- 顶栏控件（仅编辑模式） -->
     <div class="top-bar">
-    <button class="top-btn share-online" id="shareBtn">分享</button>
-    <button class="top-btn share-online" id="shareServerBtn">发布</button>
-    <button class="top-btn edit-btn" id="editBtn">编辑</button>
-        <button class="top-btn help-btn" id="editHintBtn">?</button>
-        <span class="maxsize-group">
-            <input type="number" id="maxSizeInput" value="720" min="0" max="8192" step="1" placeholder="720p" title="渲染分辨率限制（像素），0 为不限">
-        </span>
+        <div class="top-btn-row">
+            <button class="top-btn share-online" id="shareBtn">分享</button>
+            <button class="top-btn share-online" id="shareServerBtn">发布</button>
+            <button class="top-btn edit-btn" id="editBtn">编辑</button>
+            <button class="top-btn help-btn" id="editHintBtn">?</button>
+        </div>
+        <div id="fpsDisplay">0 FPS</div>
+        <div class="maxsize-group">
+            <input type="number" id="maxSizeInput" value="2560" min="0" max="8192" step="1" placeholder="2560p" title="渲染分辨率限制（像素），0 为不限">
+        </div>
     </div>
 
     <!-- 编辑器 -->
@@ -951,6 +979,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // 5. 运行时状态
         // ============================================================
         let startTime = performance.now()/1000, frameCount = 0, paused = false, pauseOffset = 0;
+        let fpsTimer = 0, fpsAccum = 0;
+        const fpsDisplay = document.getElementById('fpsDisplay');
         const mouse = {x:0,y:0,bx:0,by:0,down:false};
         let lastTime = 0, currentCode = '';
         function resize() {
@@ -981,6 +1011,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (!paused) {
                 const total = (now - startTime) - pauseOffset;
                 frameCount++;
+                fpsAccum++;
+                if (now - fpsTimer >= 1) {
+                    fpsDisplay.textContent = Math.round(fpsAccum / (now - fpsTimer)) + ' FPS';
+                    fpsAccum = 0;
+                    fpsTimer = now;
+                }
                 gl.useProgram(program);
                 const w = canvas.width, h = canvas.height;
                 gl.uniform3f(uniforms.iResolution, w, h, 0);
@@ -1077,12 +1113,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         function closeEditor() { overlay.classList.remove('open'); }
 
         // ============================================================
+        // 配置常量
+        // ============================================================
+        const MAX_SIZE_DEFAULT = 0;  // 默认渲染分辨率上限
+
+        // ============================================================
         // 内置 shader — 通过动态 <script> 加载 .shader.js 文件（不受 CORS 限制）
         // ============================================================
         const BUILTIN_SHADERS = [];  // 由 loadShaderScripts 填充
         const SHADER_JS_FILES = [
             'shader/synthwave.shader.js',
             'shader/aurora-paint.shader.js',
+            'shader/the-universe-within.shader.js',
         ];
 
         // 动态加载 shader JS 文件，填充 BUILTIN_SHADERS
@@ -1120,8 +1162,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const openFileBtn = document.getElementById('openFileBtn');
         const fileInput = document.getElementById('fileInput');
         const maxSizeInput = document.getElementById('maxSizeInput');
-        // 从 URL 参数初始化，无参数时默认 720
-        maxSizeInput.value = params.maxSize || 720;
+        // 从 URL 参数初始化，无参数时默认
+        maxSizeInput.value = params.maxSize || MAX_SIZE_DEFAULT;
         maxSizeInput.addEventListener('input', resize);
 
         // 填充下拉列表（空选项在最前）
