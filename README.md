@@ -14,6 +14,8 @@
 - **解码测试** — 将分享的 URL 或编码数据还原回编辑框
 - **自动暂停** — 页面不可见时自动暂停，恢复后继续
 
+![](img/screenshot.jpg)
+
 ## 快速开始
 
 直接将 `index.html` 拖到浏览器中打开即可使用，无需任何构建步骤。
@@ -163,15 +165,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     fragColor = vec4(1.0);
 }
 ```
-
-## 快捷键
-
-| 快捷键 | 功能 |
-|---|---|
-| `E` | 打开/关闭编辑器 |
-| `Space` | 暂停/恢复 |
-| `Ctrl+Enter` | 编译并应用 shader |
-| `Esc` | 关闭帮助/编辑器 |
 
 ## 技术栈
 

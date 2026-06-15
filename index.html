@@ -116,16 +116,9 @@
             background: rgba(70,130,220,0.25);
         }
 
-        .top-btn.help-btn {
-            background: transparent;
-            border-color: transparent;
-            color: #555;
+        .top-btn.icon-only {
             font-size: 14px;
-            padding: 7px 10px;
-        }
-        .top-btn.help-btn:hover {
-            color: #888;
-            border-color: #444;
+            padding: 7px 11px;
         }
 
         /* 信息行（分辨率、帧率） */
@@ -476,7 +469,7 @@
             <button class="top-btn share-online" id="shareBtn">分享</button>
             <button class="top-btn share-online" id="shareServerBtn">发布</button>
             <button class="top-btn edit-btn" id="editBtn">编辑</button>
-            <button class="top-btn help-btn" id="editHintBtn">?</button>
+            <button class="top-btn icon-only" id="editHintBtn">?</button>
         </div>
         <div class="info-group">
             <span class="info-tag" id="resDisplay">0×0</span>
@@ -506,8 +499,7 @@
             <button class="overlay-btn btn-default" id="defaultBtn">重置</button>
         </div>
         <div class="hint">
-            从 <a href="https://www.shadertoy.com/view/MdcSRj" target="_blank" style="color:#e8553a;">ShaderToy</a> 复制代码
-            · <kbd>Ctrl+Enter</kbd> 应用 · <kbd>E</kbd> 切换编辑器 · 点右上角 <kbd>?</kbd> 查看帮助
+            <kbd>Ctrl+Enter</kbd> 应用 · <kbd>E</kbd> 切换编辑器 · 右上角 <kbd>?</kbd> 查看帮助
         </div>
         <input type="file" id="fileInput" accept=".glsl,.glsl.css,.frag,.vert,.txt" hidden>
     </div>
@@ -526,6 +518,25 @@
                     <kbd>Space</kbd> 暂停/恢复 ·
                     <kbd>Ctrl+Enter</kbd> 应用 shader ·
                     <kbd>Esc</kbd> 关闭编辑器 / 帮助
+                </p>
+            </div>
+
+            <div class="help-section">
+                <h4>顶部按钮</h4>
+                <p>
+                    <span class="badge badge-orange">✎ 编辑</span> 打开编辑器面板，编写或粘贴 GLSL 代码<br>
+                    <span class="badge badge-green">🔗 分享</span> 将当前 shader 压缩至 URL，一键复制分享<br>
+                    <span class="badge badge-blue">☁ 发布</span> 上传代码至服务器，生成固定短链接<br>
+                    <span class="badge badge-blue">分辨率/帧率</span> 限制渲染分辨率和帧率上限，0 为不限
+                </p>
+            </div>
+
+            <div class="help-section">
+                <h4>编辑器面板</h4>
+                <p>
+                    在下拉菜单中快速切换内置 shader，也可从本地 <kbd>.glsl</kbd> 文件加载。<br>
+                    点击 <kbd>应用</kbd> 编译运行，<kbd>分享</kbd> 生成链接，<kbd>发布</kbd> 上传至服务器。<br>
+                    <kbd>解码</kbd> 可还原分享链接中的代码，<kbd>重置</kbd> 恢复默认 shader。
                 </p>
             </div>
 
@@ -971,15 +982,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             const cw = canvas.clientWidth, ch = canvas.clientHeight;
             const maxSize = parseInt(maxSizeInput.value, 10) || 0;
             let w, h;
+            const dpr = Math.min(window.devicePixelRatio, 2);
+            // 先按 DPR 计算原始物理分辨率
+            let rawW = cw * dpr, rawH = ch * dpr;
             if (maxSize > 0) {
-                // 限制渲染分辨率，较大边不超过 maxSize，画布 CSS 仍保持填满页面
-                const scale = Math.min(1, maxSize / Math.max(cw, ch));
-                w = Math.round(cw * scale);
-                h = Math.round(ch * scale);
+                // 限制较大边不超过 maxSize，否则维持 DPR 全分辨率
+                const scale = Math.min(1, maxSize / Math.max(rawW, rawH));
+                w = Math.floor(rawW * scale);
+                h = Math.floor(rawH * scale);
             } else {
-                const dpr = Math.min(window.devicePixelRatio, 2);
-                w = cw * dpr;
-                h = ch * dpr;
+                w = Math.floor(rawW);
+                h = Math.floor(rawH);
             }
             if (canvas.width !== w || canvas.height !== h) {
                 canvas.width = w; canvas.height = h;
