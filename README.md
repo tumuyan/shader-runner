@@ -5,14 +5,16 @@
 ## 功能
 
 - **编辑模式** — 粘贴 ShaderToy 的 `mainImage` GLSL 代码，实时编译运行
-- **预览模式** — 全屏渲染，无任何 UI 干扰，通过 URL 参数控制
+- **预览模式** — 全屏渲染，无 UI 干扰，通过 URL 参数控制
 - **内置 shader 选择器** — 下拉列表切换内置 shader，切换即时生效
 - **本地文件打开** — 从本地选择 `.glsl` / `.frag` 文件直接加载
 - **本地压缩分享** — lz-string 压缩 shader 代码到 URL hash 中，无需服务器存储
 - **文件短链接分享** — 内置 shader 自动生成 `?src=` 短链接，无需压缩编码
 - **服务端发布** — 使用 Netlify Blob Storage 存储，URL 只含 8 位短 ID
-- **解码测试** — 将分享的 URL 或编码数据还原回编辑框
-- **自动暂停** — 页面不可见时自动暂停，恢复后继续
+- **帧率限制** — 设置 FPS 上限，降低 GPU 占用
+- **分辨率限制** — 限制渲染分辨率最大边长，降低 GPU 开销，画面自动缩放填满
+- **自动暂停** — 页面不可见时自动暂停，恢复后继续；支持加载后按毫秒自动暂停
+
 
 ![](img/screenshot.jpg)
 
@@ -36,7 +38,9 @@ npx serve .
 | `code` | lz-string 压缩的 shader 代码（放在 hash 中） | `#code=L8RjIMoz...` |
 | `id` | 服务端存储的 shader ID | `#id=Ab3xK9mQ` |
 | `src` | 加载内置 shader 文件路径 | `?src=shader/synthwave.shader.js` |
-| `maxSize` | 限制渲染分辨率最大边长（像素），降低 GPU 开销，画面自动缩放填满 | `?maxSize=720` |
+| `maxSize` | 限制渲染分辨率最大边长（像素），0=不限，默认使用 DPR 全分辨率 | `?maxSize=720` |
+| `fpsCap` | 帧率上限（帧/秒），0=不限 | `?fpsCap=30` |
+| `autoPauseMs` | 加载后经过指定毫秒自动暂停，手动操作后失效 | `?autoPauseMs=3000` |
 
 ### 生成分享链接
 
@@ -81,8 +85,7 @@ ntl dev
 /
 ├── index.html                       # 主页面（含所有逻辑）
 ├── shader/
-│   ├── synthwave.shader.js          # 内置 shader（Synthwave Sunset）
-│   └── aurora-paint.shader.js       # 内置 shader（Aurora Paint）
+│   └── *.shader.js          # 内置 shader
 ├── README.md                        # 文档
 ├── vercel.json                      # Vercel 部署配置
 ├── api/

@@ -30,6 +30,29 @@
             display: none !important;
         }
 
+        /* 播放/暂停浮层按钮 */
+        #playPauseBtn {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 70;
+            height: 80px;
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s;
+            color: rgba(255,255,255,0.7);
+            font-size: 32px;
+        }
+        #playPauseBtn:hover { opacity: 1; }
+        body.preview-mode #playPauseBtn { display: flex; }
+        body:not(.preview-mode) #playPauseBtn { display: none; }
+
         /* 加载提示（服务器获取时） */
         #fetchLoader {
             position: fixed;
@@ -178,6 +201,19 @@
             color: #aaa;
         }
         body.preview-mode .settings-group { display: none; }
+
+        /* 启动后暂停帧数 */
+        .pause-group {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .pause-group label {
+            font-size: 12px;
+            color: #888;
+            white-space: nowrap;
+        }
+        body.preview-mode .pause-group { display: none; }
 
         /* 编辑器覆盖层 */
         #inputOverlay {
@@ -479,7 +515,14 @@
             <input class="set-input" type="number" id="maxSizeInput" value="2560" min="0" max="8192" step="1" placeholder="2560p" title="渲染分辨率限制（像素），0 为不限">
             <input class="set-input" type="number" id="fpsCapInput" value="0" min="0" max="360" step="1" placeholder="FPS" title="帧率上限（≤0 则不限制）">
         </div>
+        <div class="pause-group">
+            <label>自动暂停(毫秒)</label>
+            <input class="set-input" type="number" id="autoPauseInput" value="0" min="0" max="300000" step="100" placeholder="0" title="启动后经过指定毫秒自动暂停，0 为不暂停。手动操作后自动暂停失效">
+        </div>
     </div>
+
+    <!-- 播放/暂停按钮（预览模式显示） -->
+    <button id="playPauseBtn" title="暂停/继续">▶</button>
 
     <!-- 编辑器 -->
     <div id="inputOverlay">
@@ -723,6 +766,7 @@
                 src: p.get('src') || '',
                 maxSize: parseInt(p.get('maxSize'), 10) || 0,
                 fpsCap: parseInt(p.get('fpsCap'), 10) || 0,
+                autoPauseMs: parseInt(p.get('autoPauseMs') || h.autoPauseMs, 10) || 0,
             };
         }
 
@@ -809,7 +853,7 @@
 
         function buildServerUrl(mode, id) {
             const base = window.location.origin + window.location.pathname;
-            return base + '?mode=' + mode + '#id=' + id + maxSizeQuery() + fpsCapQuery();
+            return base + '?mode=' + mode + '#id=' + id + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
         }
 
         function maxSizeQuery() {
@@ -819,6 +863,10 @@
         function fpsCapQuery() {
             const v = parseInt(fpsCapInput.value, 10);
             return v > 0 ? '&fpsCap=' + v : '';
+        }
+        function autoPauseQuery() {
+            const v = parseInt(autoPauseInput.value, 10);
+            return v > 0 ? '&autoPauseMs=' + v : '';
         }
 
         // ============================================================
@@ -970,7 +1018,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // ============================================================
         // 5. 运行时状态
         // ============================================================
-        let startTime = performance.now()/1000, frameCount = 0, paused = false, pauseOffset = 0;
+        let startTime = performance.now()/1000, frameCount = 0, paused = false, pauseOffset = 0, autoPauseMs = 0, autoPauseFired = false;
         let frameCap = 0;  // 帧率上限（0=不限）
         let frameAccum = 0;  // rAF 时间累加器，微秒级精度
         let fpsTimer = 0, fpsAccum = 0;
@@ -1018,6 +1066,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 }
                 const total = (now - startTime) - pauseOffset;
                 frameCount++;
+                // 到达指定毫秒后自动暂停（仅一次，手动操作后永久失效）
+                if (autoPauseMs > 0 && !autoPauseFired) {
+                    const elapsed = (performance.now() / 1000 - startTime) * 1000;
+                    if (elapsed >= autoPauseMs) {
+                        paused = true;
+                        autoPauseFired = true;
+                        playPauseBtn.textContent = '▶';
+                        showHud('⏸ 已暂停（自动暂停）');
+                    }
+                }
                 fpsAccum++;
                 if (now - fpsTimer >= 1) {
                     fpsDisplay.textContent = Math.round(fpsAccum / (now - fpsTimer)) + ' FPS';
@@ -1065,23 +1123,28 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         }, {passive:true});
         canvas.addEventListener('touchend', () => mouse.down=false, {passive:true});
 
+        function togglePause() {
+            autoPauseFired = true;  // 手动操作后自动暂停永久失效
+            paused = !paused;
+            if (!paused) {
+                const n = performance.now()/1000;
+                pauseOffset = (n - startTime) - (lastTime ? lastTime - startTime : 0);
+            }
+            playPauseBtn.textContent = paused ? '▶' : '⏸';
+            showHud(paused ? '⏸ 已暂停' : '▶ 已恢复');
+        }
+
         window.addEventListener('keydown', e => {
-            if (isPreview) return;
             if (e.key === ' ' && e.target === document.body) {
                 e.preventDefault();
-                paused = !paused;
-                if (!paused) {
-                    const n = performance.now()/1000;
-                    pauseOffset = (n - startTime) - (lastTime ? lastTime - startTime : 0);
-                }
-                showHud(paused ? '⏸ 已暂停' : '▶ 已恢复');
+                togglePause();
             }
-            if (e.key === 'e' || e.key === 'E') toggleEditor();
+            if (e.key === 'e' || e.key === 'E') { if (!isPreview) toggleEditor(); }
             if (e.key === 'Escape') {
                 if (document.getElementById('helpModal').classList.contains('open')) {
                     document.getElementById('helpModal').classList.remove('open');
                 } else {
-                    closeEditor();
+                    if (!isPreview) closeEditor();
                 }
             }
         });
@@ -1094,12 +1157,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const applyBtn = document.getElementById('applyBtn');
         const closeBtn = document.getElementById('closeBtn');
         const defaultBtn = document.getElementById('defaultBtn');
+        const playPauseBtn = document.getElementById('playPauseBtn');
         const editBtn = document.getElementById('editBtn');
         const editHintBtn = document.getElementById('editHintBtn');
         const shareBtn = document.getElementById('shareBtn');
         const shareServerBtn = document.getElementById('shareServerBtn');
         const shareUrlBtn = document.getElementById('shareUrlBtn');
         const uploadBtn = document.getElementById('uploadBtn');
+        const autoPauseInput = document.getElementById('autoPauseInput');
         const hud = document.getElementById('hud');
         const toast = document.getElementById('toast');
         const fetchLoader = document.getElementById('fetchLoader');
@@ -1179,6 +1244,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // 从 URL 参数初始化，无参数时默认
         maxSizeInput.value = params.maxSize || MAX_SIZE_DEFAULT;
         fpsCapInput.value = params.fpsCap || FPS_CAP_DEFAULT;
+        autoPauseInput.value = params.autoPauseMs;
+        autoPauseMs = parseInt(autoPauseInput.value, 10) || 0;
+        autoPauseInput.addEventListener('input', () => {
+            autoPauseMs = parseInt(autoPauseInput.value, 10) || 0;
+        });
         frameCap = parseInt(fpsCapInput.value, 10) || 0;
         maxSizeInput.addEventListener('input', resize);
         fpsCapInput.addEventListener('input', () => {
@@ -1275,6 +1345,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         }
 
         editBtn.addEventListener('click', toggleEditor);
+        playPauseBtn.addEventListener('click', togglePause);
         editHintBtn.addEventListener('click', () => {
             document.getElementById('helpModal').classList.add('open');
         });
@@ -1301,10 +1372,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             // 如果当前 shader 来自内置文件，生成 ?src= 短链接
             if (currentSrc) {
                 const base = window.location.origin + window.location.pathname;
-                encodedUrlInput.value = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + '&src=' + currentSrc;
+                encodedUrlInput.value = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + '&src=' + currentSrc;
                 return;
             }
-            const url = buildShareUrl('preview', code) + maxSizeQuery() + fpsCapQuery();
+            const url = buildShareUrl('preview', code) + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
             encodedUrlInput.value = url;
         }
 
@@ -1315,7 +1386,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (currentSrc) {
                 // 来自内置文件 → 复制 ?src= 短链接
                 const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + '&src=' + currentSrc;
+                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + '&src=' + currentSrc;
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1375,7 +1446,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         // ---- 分享：压缩到 URL hash ----
         function doShare(mode) {
-            const url = buildShareUrl(mode, textarea.value) + maxSizeQuery() + fpsCapQuery();
+            const url = buildShareUrl(mode, textarea.value) + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
             navigator.clipboard.writeText(url).then(() => {
                 showToast('✓ ' + (mode==='preview'?'预览':'编辑') + ' 链接已复制');
             }).catch(() => {
@@ -1390,7 +1461,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             if (currentSrc) {
                 // 来自内置文件 → 复制 ?src= 短链接
                 const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + '&src=' + currentSrc;
+                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + '&src=' + currentSrc;
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1496,6 +1567,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             currentCode = shaderCode;
             createProgram(shaderCode);
             resize();
+            playPauseBtn.textContent = paused ? '▶' : '⏸';
             requestAnimationFrame(render);
         }
 
@@ -1523,6 +1595,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         console.log('📎 数据来源:', params.code ? 'URL hash (压缩)' : params.id ? '服务器' : params.src ? '文件: ' + params.src : '默认');
         if (params.maxSize) console.log('🔒 渲染分辨率限制:', params.maxSize + 'px (最大边)');
         if (params.fpsCap > 0) console.log('🎯 帧率上限:', params.fpsCap + ' FPS');
+        if (params.autoPauseMs > 0) console.log('⏸ 自动暂停（毫秒）:', params.autoPauseMs);
         console.log('🔧 lz-string 自检:', window.__LZ_OK ? '通过' : '失败');
     </script>
 </body>
