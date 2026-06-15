@@ -25,7 +25,6 @@
         body.preview-mode #shareBtn,
         body.preview-mode #shareServerBtn,
         body.preview-mode #inputOverlay,
-        body.preview-mode #hud,
         body.preview-mode #fetchLoader {
             display: none !important;
         }
@@ -50,8 +49,7 @@
             font-size: 32px;
         }
         #playPauseBtn:hover { opacity: 1; }
-        body.preview-mode #playPauseBtn { display: flex; }
-        body:not(.preview-mode) #playPauseBtn { display: none; }
+        body #playPauseBtn { display: flex; }
 
         /* 加载提示（服务器获取时） */
         #fetchLoader {
@@ -317,25 +315,6 @@
         .btn-default { background: #2a2a3a; color: #888; }
         .btn-default:hover { background: #3a3a4a; color: #aaa; }
 
-        /* HUD */
-        #hud {
-            position: fixed;
-            top: 12px; left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(4px);
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 12px;
-            color: #888;
-            pointer-events: none;
-            z-index: 50;
-            white-space: nowrap;
-            opacity: 0;
-            transition: opacity 0.5s;
-        }
-        #hud.show { opacity: 1; }
-
         .hint {
             font-size: 12px;
             color: #777;
@@ -496,7 +475,6 @@
 
     <canvas id="glCanvas"></canvas>
 
-    <div id="hud">按 <kbd>Esc</kbd> 关闭 · 拖拽旋转视角</div>
     <div id="fetchLoader"><span class="spinner"></span>正在获取 Shader...</div>
 
     <!-- 顶栏控件（仅编辑模式） -->
@@ -544,7 +522,7 @@
         <div class="hint">
             <kbd>Ctrl+Enter</kbd> 应用 · <kbd>E</kbd> 切换编辑器 · 右上角 <kbd>?</kbd> 查看帮助
         </div>
-        <input type="file" id="fileInput" accept=".glsl,.glsl.css,.frag,.vert,.txt" hidden>
+        <input type="file" id="fileInput" accept=".glsl,.frag,.vert,.txt" hidden>
     </div>
 
     <div id="toast"></div>
@@ -764,8 +742,8 @@
                 code: h.code || p.get('code') || '',
                 id: h.id || p.get('id') || '',
                 src: p.get('src') || '',
-                maxSize: parseInt(p.get('maxSize'), 10) || 0,
-                fpsCap: parseInt(p.get('fpsCap'), 10) || 0,
+                maxSize: parseInt(p.get('maxSize') || h.maxSize, 10) || 0,
+                fpsCap: parseInt(p.get('fpsCap') || h.fpsCap, 10) || 0,
                 autoPauseMs: parseInt(p.get('autoPauseMs') || h.autoPauseMs, 10) || 0,
             };
         }
@@ -867,6 +845,10 @@
         function autoPauseQuery() {
             const v = parseInt(autoPauseInput.value, 10);
             return v > 0 ? '&autoPauseMs=' + v : '';
+        }
+        function buildFileUrl() {
+            const base = window.location.origin + window.location.pathname;
+            return base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + '&src=' + currentSrc;
         }
 
         // ============================================================
@@ -1026,6 +1008,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const resDisplay = document.getElementById('resDisplay');
         const mouse = {x:0,y:0,bx:0,by:0,down:false};
         let lastTime = 0, currentCode = '';
+        const maxSizeInput = document.getElementById('maxSizeInput');
+        const fpsCapInput = document.getElementById('fpsCapInput');
         function resize() {
             const cw = canvas.clientWidth, ch = canvas.clientHeight;
             const maxSize = parseInt(maxSizeInput.value, 10) || 0;
@@ -1066,14 +1050,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 }
                 const total = (now - startTime) - pauseOffset;
                 frameCount++;
-                // 到达指定毫秒后自动暂停（仅一次，手动操作后永久失效）
-                if (autoPauseMs > 0 && !autoPauseFired) {
+                // 到达指定毫秒后自动暂停（仅预览模式，手动操作后永久失效）
+                if (isPreview && autoPauseMs > 0 && !autoPauseFired) {
                     const elapsed = (performance.now() / 1000 - startTime) * 1000;
                     if (elapsed >= autoPauseMs) {
                         paused = true;
                         autoPauseFired = true;
                         playPauseBtn.textContent = '▶';
-                        showHud('⏸ 已暂停（自动暂停）');
                     }
                 }
                 fpsAccum++;
@@ -1131,7 +1114,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 pauseOffset = (n - startTime) - (lastTime ? lastTime - startTime : 0);
             }
             playPauseBtn.textContent = paused ? '▶' : '⏸';
-            showHud(paused ? '⏸ 已暂停' : '▶ 已恢复');
         }
 
         window.addEventListener('keydown', e => {
@@ -1165,7 +1147,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const shareUrlBtn = document.getElementById('shareUrlBtn');
         const uploadBtn = document.getElementById('uploadBtn');
         const autoPauseInput = document.getElementById('autoPauseInput');
-        const hud = document.getElementById('hud');
         const toast = document.getElementById('toast');
         const fetchLoader = document.getElementById('fetchLoader');
 
@@ -1173,10 +1154,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         function showToast(msg) {
             toast.textContent = msg; toast.classList.add('show');
             clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
-        }
-        function showHud(msg) {
-            hud.textContent = msg; hud.classList.add('show');
-            clearTimeout(hud._timer); hud._timer = setTimeout(() => hud.classList.remove('show'), 2000);
         }
         function toggleEditor() {
             overlay.classList.toggle('open');
@@ -1239,8 +1216,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         const shaderSelector = document.getElementById('shaderSelector');
         const openFileBtn = document.getElementById('openFileBtn');
         const fileInput = document.getElementById('fileInput');
-        const maxSizeInput = document.getElementById('maxSizeInput');
-        const fpsCapInput = document.getElementById('fpsCapInput');
         // 从 URL 参数初始化，无参数时默认
         maxSizeInput.value = params.maxSize || MAX_SIZE_DEFAULT;
         fpsCapInput.value = params.fpsCap || FPS_CAP_DEFAULT;
@@ -1337,10 +1312,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         function applyShader(code) {
             currentCode = code;
             if (createProgram(code)) {
-                showHud('✓ Shader 编译成功');
+                showToast('✓ Shader 编译成功');
                 closeEditor();
             } else {
-                showHud('✗ Shader 编译失败，请检查控制台');
+                showToast('✗ Shader 编译失败，请检查控制台');
             }
         }
 
@@ -1371,8 +1346,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             }
             // 如果当前 shader 来自内置文件，生成 ?src= 短链接
             if (currentSrc) {
-                const base = window.location.origin + window.location.pathname;
-                encodedUrlInput.value = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + '&src=' + currentSrc;
+                encodedUrlInput.value = buildFileUrl();
                 return;
             }
             const url = buildShareUrl('preview', code) + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
@@ -1384,9 +1358,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             syncUrlInput();
             const code = textarea.value.trim();
             if (currentSrc) {
-                // 来自内置文件 → 复制 ?src= 短链接
-                const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + '&src=' + currentSrc;
+                const url = buildFileUrl();
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1459,9 +1431,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         }
         shareBtn.addEventListener('click', () => {
             if (currentSrc) {
-                // 来自内置文件 → 复制 ?src= 短链接
-                const base = window.location.origin + window.location.pathname;
-                const url = base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + '&src=' + currentSrc;
+                const url = buildFileUrl();
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('✓ 文件链接已复制');
                 }).catch(() => {
@@ -1584,6 +1554,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 const n = performance.now()/1000;
                 pauseOffset = (n - startTime) - (lastTime ? lastTime - startTime : 0);
             }
+            playPauseBtn.textContent = paused ? '▶' : '⏸';
         });
 
         // 自检：验证 lz-string 压缩解压是否正常
