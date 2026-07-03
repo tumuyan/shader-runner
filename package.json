@@ -2,6 +2,7 @@
   "name": "shadertoy-runner",
   "private": true,
   "dependencies": {
-    "@netlify/blobs": "^8.0.0"
+    "@netlify/blobs": "^8.0.0",
+    "vercel": "^54.20.0"
   }
 }
