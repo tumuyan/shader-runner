@@ -1,6 +1,15 @@
 {
   "name": "shadertoy-runner",
   "private": true,
+  "scripts": {
+    "release": "node scripts/release-shader.js",
+    "release:status": "node scripts/release-shader.js --status",
+    "release:all": "node scripts/release-shader.js --all",
+    "release:refresh": "node scripts/release-shader.js --refresh",
+    "release:check": "node scripts/release-shader.js --check",
+    "drafts:extract": "node scripts/extract-shader.js",
+    "shaders:check": "node scripts/gen-shader-manifest.js --check"
+  },
   "dependencies": {
     "@netlify/blobs": "^8.0.0",
     "vercel": "^54.20.0"

@@ -521,7 +521,7 @@
             <button class="overlay-btn btn-default" id="defaultBtn">重置</button>
         </div>
         <div class="hint">
-            <kbd>Ctrl+Enter</kbd> 应用 · <kbd>E</kbd> 切换编辑器 · 右上角 <kbd>?</kbd> 查看帮助
+            <kbd>Ctrl+Enter</kbd> 应用 · <kbd>Tab</kbd> 缩进 · <kbd>Shift+Tab</kbd> 反缩进/移出 · <kbd>E</kbd> 切换编辑器 · 右上角 <kbd>?</kbd> 查看帮助
         </div>
         <input type="file" id="fileInput" accept=".glsl,.frag,.vert,.txt" hidden>
     </div>
@@ -539,7 +539,9 @@
                     <kbd>E</kbd> 打开/关闭编辑器 ·
                     <kbd>Space</kbd> 暂停/恢复 ·
                     <kbd>Ctrl+Enter</kbd> 应用 shader ·
-                    <kbd>Esc</kbd> 关闭编辑器 / 帮助
+                    <kbd>Esc</kbd> 关闭编辑器 / 帮助<br>
+                    编辑器内：<kbd>Tab</kbd> 缩进 4 空格（选中多行可整块缩进）·
+                    <kbd>Shift+Tab</kbd> 反缩进，无选中时移出输入框
                 </p>
             </div>
 
@@ -892,6 +894,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         }
 
         function compileShader(src, type) {
+            if (gl.isContextLost()) return null;
             const shader = gl.createShader(type);
             gl.shaderSource(shader, src);
             gl.compileShader(shader);
@@ -951,7 +954,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         let program = null, uniforms = {};
         function createProgram(userCode) {
+            if (gl.isContextLost()) return false;
             if (program) { gl.deleteProgram(program); program = null; }
+            // 先清空：链接失败时不能残留上一份 program 的 location，否则会用失效 location 上传 uniform
+            uniforms = {};
             const vs = compileShader(VERTEX_SHADER, gl.VERTEX_SHADER);
             const fs = compileShader(buildFragmentShader(userCode), gl.FRAGMENT_SHADER);
             if (!vs || !fs) return false;
@@ -965,7 +971,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             gl.deleteShader(vs); gl.deleteShader(fs);
             program = prog; gl.useProgram(program);
             const names = ['iResolution','iTime','iTimeDelta','iFrame','iMouse','iDate','iSampleRate','iChannel0','iChannel1','iChannel2','iChannel3'];
-            uniforms = {};
             names.forEach(n => uniforms[n] = gl.getUniformLocation(program, n));
             [0,1,2,3].forEach(i => gl.uniform1i(uniforms['iChannel'+i], i));
             return true;
@@ -987,16 +992,76 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             return tex;
         }
 
-        const verts = new Float32Array([-1,-1,3,-1,-1,3]);
-        const vao = gl.createVertexArray();
-        gl.bindVertexArray(vao);
-        const vbo = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-        gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-        const dflTex = createDefaultTexture();
-        for (let i = 0; i < 4; i++) { gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D, dflTex); }
+        // ---- GL 资源（上下文丢失后需整体重建，故用 let 而非常量）----
+        let vao = null, vbo = null, dflTex = null;
+
+        function releaseGLResources() {
+            // 上下文丢失后这些对象已失效，删除调用无意义且会静默失败，只需断开引用
+            if (gl.isContextLost()) { vao = vbo = dflTex = null; return; }
+            if (vao) { gl.deleteVertexArray(vao); vao = null; }
+            if (vbo) { gl.deleteBuffer(vbo); vbo = null; }
+            if (dflTex) { gl.deleteTexture(dflTex); dflTex = null; }
+        }
+
+        function initGLResources() {
+            vao = gl.createVertexArray();
+            vbo = gl.createBuffer();
+            if (!vao || !vbo) { releaseGLResources(); return false; }
+            gl.bindVertexArray(vao);
+            const verts = new Float32Array([-1,-1,3,-1,-1,3]);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            dflTex = createDefaultTexture();
+            if (!dflTex) { releaseGLResources(); return false; }
+            for (let i = 0; i < 4; i++) { gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D, dflTex); }
+            return true;
+        }
+        // 初始化失败只置标记：此处早于 toast 的 const 声明，直接 showToast 会触发 TDZ 报错，
+        // 把脚本剩余部分（事件绑定、init()）全部打断。提示延后到 init() 末尾。
+        let glInitFailed = false;
+        if (!initGLResources()) {
+            glInitFailed = true;
+            console.error('GL 资源初始化失败');
+        }
+
+        // ---- WebGL 上下文丢失 / 恢复 ----
+        // GPU 切换、驱动重置、移动端切后台都可能丢上下文。丢失后所有 GL 调用静默失效，
+        // 表现为画面永久卡死；若不 preventDefault()，浏览器不会派发 restored 事件。
+        let contextLost = false;
+        let contextLostTimer = null;
+
+        canvas.addEventListener('webglcontextlost', e => {
+            e.preventDefault();
+            contextLost = true;
+            program = null; uniforms = {};
+            releaseGLResources();
+            console.warn('⚠ WebGL 上下文丢失，等待恢复…');
+            clearTimeout(contextLostTimer);
+            contextLostTimer = setTimeout(() => {
+                if (contextLost) showToast('⚠ 渲染上下文未恢复，请刷新页面');
+            }, 5000);
+        });
+
+        canvas.addEventListener('webglcontextrestored', () => {
+            console.log('WebGL 上下文已恢复，正在重建资源…');
+            clearTimeout(contextLostTimer);
+            let ok = false;
+            try {
+                ok = initGLResources() && createProgram(currentCode || DEFAULT_SHADER);
+            } catch (err) {
+                console.error('GL 资源重建异常:', err);
+            }
+            if (ok) {
+                contextLost = false;
+                resize(true);   // 恢复后需重设 viewport（canvas 尺寸未变时 resize 不会触发）
+                showToast('✓ 渲染已恢复');
+            } else {
+                showToast('✗ 渲染恢复失败，请刷新页面');
+            }
+        });
 
         // ============================================================
         // 5. 运行时状态
@@ -1004,14 +1069,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         let startTime = performance.now()/1000, frameCount = 0, paused = false, pauseOffset = 0, autoPauseMs = 0, autoPauseFired = false;
         let frameCap = 0;  // 帧率上限（0=不限）
         let frameAccum = 0;  // rAF 时间累加器，微秒级精度
+        let pendingDelta = 0;  // 自上次渲染以来累计的真实时长，用于 iTimeDelta
         let fpsTimer = 0, fpsAccum = 0;
+        const MAX_DELTA = 1;  // 单帧最大计入时间（秒），超出部分视为冻结
         const fpsDisplay = document.getElementById('fpsDisplay');
         const resDisplay = document.getElementById('resDisplay');
-        const mouse = {x:0,y:0,bx:0,by:0,down:false};
+        // bx/by 初始为负：ShaderToy 用 iMouse.z > 0.0 判断是否按住，未点击过应处于「未按下」状态
+        const mouse = {x:0,y:0,bx:-1,by:-1,down:false};
         let lastTime = 0, currentCode = '';
         const maxSizeInput = document.getElementById('maxSizeInput');
         const fpsCapInput = document.getElementById('fpsCapInput');
-        function resize() {
+        function resize(force) {
             const cw = canvas.clientWidth, ch = canvas.clientHeight;
             const maxSize = parseInt(maxSizeInput.value, 10) || 0;
             let w, h;
@@ -1027,7 +1095,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 w = Math.floor(rawW);
                 h = Math.floor(rawH);
             }
-            if (canvas.width !== w || canvas.height !== h) {
+            // 严格判 true：resize 直接被当作事件回调注册时，事件对象会作为 force 传入
+            if (force === true || canvas.width !== w || canvas.height !== h) {
                 canvas.width = w; canvas.height = h;
                 gl.viewport(0, 0, w, h);
                 resDisplay.textContent = w + '×' + h;
@@ -1037,99 +1106,140 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         function render(time) {
             resize();
             const now = time / 1000;
-            const delta = lastTime ? now - lastTime : 0.016;
+            // 切后台回来时 rAF 会停摆，首帧 delta 可能是几百秒。截断并把超出部分计入冻结时间，
+            // 否则 iTime / iTimeDelta 会出现巨大跳变（shader 里常见的一闪而过或画面突变）。
+            const rawDelta = lastTime ? now - lastTime : 0.016;
+            const delta = Math.min(rawDelta, MAX_DELTA);
+            pauseOffset += rawDelta - delta;
             lastTime = now;
-            if (!paused) {
-                // 帧率控制—高精度累加器（rAF time 为 DOMHighResTimeStamp，微秒级精度）
-                if (frameCap > 0) {
-                    frameAccum = Math.min(frameAccum + delta, 1);  // 防 catch-up 爆帧
-                    if (frameAccum < 1 / frameCap) {
-                        requestAnimationFrame(render);
-                        return;
-                    }
-                    frameAccum -= 1 / frameCap;
-                }
-                const total = (now - startTime) - pauseOffset;
-                frameCount++;
-                // 到达指定毫秒后自动暂停（仅预览模式，手动操作后永久失效）
-                if (isPreview && autoPauseMs > 0 && !autoPauseFired) {
-                    const elapsed = (performance.now() / 1000 - startTime) * 1000;
-                    if (elapsed >= autoPauseMs) {
-                        paused = true;
-                        autoPauseFired = true;
-                        playPauseBtn.textContent = '▶';
-                    }
-                }
-                fpsAccum++;
-                if (now - fpsTimer >= 1) {
-                    fpsDisplay.textContent = Math.round(fpsAccum / (now - fpsTimer)) + ' FPS';
-                    fpsAccum = 0;
-                    fpsTimer = now;
-                }
-                gl.useProgram(program);
-                const w = canvas.width, h = canvas.height;
-                gl.uniform3f(uniforms.iResolution, w, h, 0);
-                gl.uniform1f(uniforms.iTime, total);
-                gl.uniform1f(uniforms.iTimeDelta, delta);
-                gl.uniform1f(uniforms.iFrame, frameCount);
-                gl.uniform1f(uniforms.iSampleRate, 44100);
-                gl.uniform4f(uniforms.iMouse, mouse.x, mouse.y, mouse.bx, mouse.by);
-                const d = new Date();
-                gl.uniform4f(uniforms.iDate, d.getFullYear(), d.getMonth()+1, d.getDate(),
-                    (d.getHours()*3600+d.getMinutes()*60+d.getSeconds())/86400);
-                gl.bindVertexArray(vao);
-                gl.drawArrays(gl.TRIANGLES, 0, 3);
+            // 画面未推进的时间（暂停 / 上下文丢失 / 无可用 program）统一在此累加到 pauseOffset。
+            // 必须每帧增量累加，不能在各处赋值覆盖 —— 否则后面的补偿会抹掉前面已冻结的时间。
+            if (paused || contextLost || !program) {
+                pauseOffset += delta;
+                // 这段时间 iTime 不推进（已计入 pauseOffset），对应的步长也要丢弃，
+                // 否则恢复后首帧的 iTimeDelta 会带上暂停前的残留
+                pendingDelta = 0;
+                requestAnimationFrame(render);
+                return;
             }
+
+            // 帧率控制—高精度累加器（rAF time 为 DOMHighResTimeStamp，微秒级精度）
+            // 被跳过的帧同样要把真实时长累加进 pendingDelta：否则上传的 iTimeDelta
+            // 只等于最后一个真实帧间隔，与 iTime 每渲染帧推进的 1/frameCap 不符，
+            // shader 里用 iTimeDelta 做积分/阻尼会整体偏慢（30FPS 上限下慢一半）。
+            pendingDelta += delta;
+            if (frameCap > 0) {
+                frameAccum = Math.min(frameAccum + delta, 1);  // 防 catch-up 爆帧
+                if (frameAccum < 1 / frameCap) {
+                    requestAnimationFrame(render);
+                    return;
+                }
+                frameAccum -= 1 / frameCap;
+            }
+            const total = (now - startTime) - pauseOffset;
+            frameCount++;
+            // 到达指定毫秒后自动暂停（仅预览模式，手动操作后永久失效）
+            if (isPreview && autoPauseMs > 0 && !autoPauseFired) {
+                const elapsed = (performance.now() / 1000 - startTime) * 1000;
+                if (elapsed >= autoPauseMs) {
+                    paused = true;
+                    autoPauseFired = true;
+                    playPauseBtn.textContent = '▶';
+                }
+            }
+            fpsAccum++;
+            if (now - fpsTimer >= 1) {
+                fpsDisplay.textContent = Math.round(fpsAccum / (now - fpsTimer)) + ' FPS';
+                fpsAccum = 0;
+                fpsTimer = now;
+            }
+            gl.useProgram(program);
+            const w = canvas.width, h = canvas.height;
+            // iResolution.z 是像素宽高比（ShaderToy 约定，方形像素恒为 1.0），不是画布宽高比。
+            // 传 0 会让 (fragCoord - 0.5*iResolution.xy)/iResolution.z 这类写法除零变 inf/NaN。
+            gl.uniform3f(uniforms.iResolution, w, h, 1);
+            gl.uniform1f(uniforms.iTime, total);
+            gl.uniform1f(uniforms.iTimeDelta, pendingDelta);
+            gl.uniform1f(uniforms.iFrame, frameCount);
+            gl.uniform1f(uniforms.iSampleRate, 44100);
+            gl.uniform4f(uniforms.iMouse, mouse.x, mouse.y, mouse.bx, mouse.by);
+            const d = new Date();
+            gl.uniform4f(uniforms.iDate, d.getFullYear(), d.getMonth()+1, d.getDate(),
+                (d.getHours()*3600+d.getMinutes()*60+d.getSeconds())/86400);
+            gl.bindVertexArray(vao);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            pendingDelta = 0;
             requestAnimationFrame(render);
         }
 
         // ============================================================
         // 6. 事件
         // ============================================================
-        canvas.addEventListener('mousemove', e => {
+        // ShaderToy 语义：iMouse.xy 为当前坐标；iMouse.zw 为按下时的坐标，
+        // 松开后取负（绝对值仍为最后一次按下的位置）。因此 shader 里用
+        // iMouse.z > 0.0 判断「是否按住」—— 松开时必须置负，否则会永远显示成按下。
+        function updateMousePos(clientX, clientY) {
             const r = canvas.getBoundingClientRect();
-            mouse.x = (e.clientX-r.left)/r.width*canvas.width;
-            mouse.y = canvas.height - (e.clientY-r.top)/r.height*canvas.height;
-        });
-        canvas.addEventListener('mousedown', e => { mouse.down=true; mouse.bx=mouse.x; mouse.by=mouse.y; });
-        canvas.addEventListener('mouseup', () => mouse.down=false);
-        canvas.addEventListener('mouseleave', () => mouse.down=false);
-        canvas.addEventListener('touchstart', e => {
-            const t = e.touches[0], r = canvas.getBoundingClientRect();
-            mouse.x = mouse.bx = (t.clientX-r.left)/r.width*canvas.width;
-            mouse.y = mouse.by = canvas.height - (t.clientY-r.top)/r.height*canvas.height;
+            mouse.x = (clientX-r.left)/r.width*canvas.width;
+            mouse.y = canvas.height - (clientY-r.top)/r.height*canvas.height;
+        }
+        function pressMouse(clientX, clientY) {
+            // 先按事件坐标刷新 xy：进入画布后未移动就按下时，mouse.xy 还是上一次的陈旧值
+            updateMousePos(clientX, clientY);
+            mouse.bx = mouse.x; mouse.by = mouse.y;
             mouse.down = true;
+        }
+        function releaseMouse() {
+            mouse.down = false;
+            // 取负，且 0 的情况（-0 是 falsy）兜底为 -1，保证 z 严格 < 0
+            mouse.bx = -Math.abs(mouse.bx) || -1;
+            mouse.by = -Math.abs(mouse.by) || -1;
+        }
+        canvas.addEventListener('mousemove', e => updateMousePos(e.clientX, e.clientY));
+        canvas.addEventListener('mousedown', e => pressMouse(e.clientX, e.clientY));
+        canvas.addEventListener('mouseup', releaseMouse);
+        canvas.addEventListener('mouseleave', releaseMouse);
+        canvas.addEventListener('touchstart', e => {
+            pressMouse(e.touches[0].clientX, e.touches[0].clientY);
         }, {passive:true});
         canvas.addEventListener('touchmove', e => {
-            const t = e.touches[0], r = canvas.getBoundingClientRect();
-            mouse.x = (t.clientX-r.left)/r.width*canvas.width;
-            mouse.y = canvas.height - (t.clientY-r.top)/r.height*canvas.height;
+            updateMousePos(e.touches[0].clientX, e.touches[0].clientY);
         }, {passive:true});
-        canvas.addEventListener('touchend', () => mouse.down=false, {passive:true});
+        canvas.addEventListener('touchend', releaseMouse, {passive:true});
 
         function togglePause() {
             autoPauseFired = true;  // 手动操作后自动暂停永久失效
             paused = !paused;
-            if (!paused) {
-                const n = performance.now()/1000;
-                pauseOffset = (n - startTime) - (lastTime ? lastTime - startTime : 0);
-            }
+            // 时间补偿统一由 render 每帧累加，此处不再手工改写 pauseOffset
             playPauseBtn.textContent = paused ? '▶' : '⏸';
         }
 
         window.addEventListener('keydown', e => {
-            if (e.key === ' ' && e.target === document.body) {
-                e.preventDefault();
-                togglePause();
-            }
-            if (e.key === 'e' || e.key === 'E') { if (!isPreview) toggleEditor(); }
+            const el = e.target;
+            const tn = (el && el.tagName) ? el.tagName.toUpperCase() : '';
+            // 正在输入：不劫持单键快捷键（否则在编辑器里敲 vec3 / float 中的 e 会直接关掉面板）
+            const typing = tn === 'TEXTAREA' || tn === 'INPUT' || (el && el.isContentEditable === true);
+            // 焦点在原生控件上时，单键语义属于该控件本身（空格展开下拉 / 激活按钮、
+            // 字母键在 select 里跳转 option），一律不劫持
+            const interactive = tn === 'BUTTON' || tn === 'A' || tn === 'SELECT'
+                || tn === 'OPTION' || tn === 'SUMMARY';
+
+            // Esc 优先且始终生效 —— 在编辑器里打字时同样期望它能关闭面板
             if (e.key === 'Escape') {
                 if (document.getElementById('helpModal').classList.contains('open')) {
                     document.getElementById('helpModal').classList.remove('open');
                 } else {
                     if (!isPreview) closeEditor();
                 }
+                return;
             }
+            if (typing || interactive) return;
+
+            if (e.key === ' ') {
+                e.preventDefault();
+                togglePause();
+            }
+            if (e.key === 'e' || e.key === 'E') { if (!isPreview) toggleEditor(); }
         });
 
         // ============================================================
@@ -1156,6 +1266,44 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             toast.textContent = msg; toast.classList.add('show');
             clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
         }
+
+        // ---- 统一剪贴板写入 ----
+        // navigator.clipboard 在非安全上下文（http:// 局域网、file://）下可能整个不存在，
+        // 此时 writeText 会同步抛 TypeError 而非返回 rejected promise —— 只写 .catch() 是接不住的，
+        // 必须用 try/catch 包住调用再落到 execCommand 兜底。
+        function copyTextAsync(text) {
+            const fallback = () => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.top = '-1000px';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    ta.setSelectionRange(0, text.length);
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return ok;
+                } catch (err) {
+                    return false;
+                }
+            };
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    return navigator.clipboard.writeText(text).then(() => true, () => fallback());
+                }
+            } catch (err) { /* 同步抛错，落到兜底 */ }
+            return Promise.resolve(fallback());
+        }
+
+        function copyText(text, okMsg) {
+            return copyTextAsync(text).then(ok => {
+                showToast(ok ? okMsg : '✗ 复制失败，请手动选中复制');
+                return ok;
+            });
+        }
         function toggleEditor() {
             overlay.classList.toggle('open');
             if (overlay.classList.contains('open')) textarea.focus();
@@ -1170,50 +1318,59 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         // ============================================================
         // 内置 shader — 通过动态 <script> 加载 .shader.js 文件（不受 CORS 限制）
+        // 文件清单由 shader/manifest.js 提供，该文件由 `npm run release -- --refresh` 扫描
+        // shader/*.shader.js 自动生成；新增 shader 只需丢文件 + 重跑命令，无需改这里。
         // ============================================================
-        const BUILTIN_SHADERS = [];  // 由 loadShaderScripts 填充
-        const SHADER_JS_FILES = [
-            'shader/synthwave.shader.js',
-            'shader/aurora.shader.js',
-            'shader/aurora-paint.shader.js',
-            'shader/the-universe-within.shader.js',
-            'shader/70s-melt-color.shader.js',
-            'shader/fuzzy-clouds.shader.js',
-            'shader/rain.shader.js',
-            'shader/2d-cloud.shader.js',
-            'shader/plasma-waves.shader.js', 
-            'shader/shattered-space.shader.js', 
-            'shader/firefly.shader.js',
-            'shader/micro-light.shader.js',
-        ];
+        const BUILTIN_SHADERS = [];      // 由 loadShaderScripts 填充
+        const SHADER_MANIFEST_PATH = 'shader/manifest.js';
 
-        // 动态加载 shader JS 文件，填充 BUILTIN_SHADERS
-        function loadShaderScripts() {
+        // 注入 <script>，返回 Promise<boolean>（onload / onerror 都 resolve，不卡住后续流程）
+        function injectScript(src) {
+            return new Promise((resolve) => {
+                var s = document.createElement('script');
+                s.src = src;
+                s.onload = function() { resolve(true); };
+                s.onerror = function() { console.warn('⚠ 加载失败: ' + src); resolve(false); };
+                document.head.appendChild(s);
+            });
+        }
+
+        // 读取清单（window.__SHADER_MANIFEST__ 由 shader/manifest.js 写入）
+        async function loadShaderManifest() {
+            if (Array.isArray(window.__SHADER_MANIFEST__)) return window.__SHADER_MANIFEST__.slice();
+            if (!(await injectScript(SHADER_MANIFEST_PATH))) return null;
+            return Array.isArray(window.__SHADER_MANIFEST__) ? window.__SHADER_MANIFEST__.slice() : null;
+        }
+
+        // 按清单顺序整理 BUILTIN_SHADERS：并行加载的脚本执行顺序不保证，
+        // 这里显式排序，保证下拉列表顺序稳定且与 manifest 一致。
+        function syncBuiltinShaders() {
+            var order = {};
+            (window.__SHADER_MANIFEST__ || []).forEach(function(p, i) { order[p] = i; });
+            var reg = (window.__SHADER_REGISTRY__ || []).slice();
+            reg.sort(function(a, b) {
+                return (order[a.path] === undefined ? 1e9 : order[a.path])
+                     - (order[b.path] === undefined ? 1e9 : order[b.path]);
+            });
+            BUILTIN_SHADERS.length = 0;
+            BUILTIN_SHADERS.push.apply(BUILTIN_SHADERS, reg);
+        }
+
+        // 加载清单里列出的所有 shader 文件，填充 BUILTIN_SHADERS
+        async function loadShaderScripts() {
             if (window.__SHADER_REGISTRY__ && window.__SHADER_REGISTRY__.length > 0) {
                 // 已加载（可能被后续重复调用）
-                BUILTIN_SHADERS.length = 0;
-                BUILTIN_SHADERS.push.apply(BUILTIN_SHADERS, window.__SHADER_REGISTRY__);
-                return Promise.resolve();
+                syncBuiltinShaders();
+                return;
             }
-            return new Promise((resolve) => {
-                var loaded = 0;
-                var total = SHADER_JS_FILES.length;
-                if (total === 0) { resolve(); return; }
-                SHADER_JS_FILES.forEach(function(path) {
-                    var s = document.createElement('script');
-                    s.src = path;
-                    s.onload = s.onerror = function() {
-                        loaded++;
-                        if (loaded >= total) {
-                            var reg = window.__SHADER_REGISTRY__ || [];
-                            BUILTIN_SHADERS.length = 0;
-                            BUILTIN_SHADERS.push.apply(BUILTIN_SHADERS, reg);
-                            resolve();
-                        }
-                    };
-                    document.head.appendChild(s);
-                });
-            });
+            var manifest = await loadShaderManifest();
+            if (!manifest) {
+                console.warn('⚠ ' + SHADER_MANIFEST_PATH + ' 缺失，未加载任何内置 shader');
+                showToast('⚠ shader/manifest.js 缺失，请运行 npm run release -- --refresh');
+                return;
+            }
+            await Promise.all(manifest.map(injectScript));
+            syncBuiltinShaders();
         }
 
         let currentSrc = '';   // 当前 shader 的来源文件路径，空 = 非文件来源
@@ -1316,6 +1473,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         function applyShader(code) {
             currentCode = code;
+            if (contextLost) {
+                showToast('✗ WebGL 上下文已丢失，不是你的代码问题，请等待恢复或刷新页面');
+                return;
+            }
+            // vao 缺失 = 启动期 GL 资源初始化失败。此时 program 依然建得出来，但画面全黑，
+            // 必须拦在编译之前，否则会误报「编译成功」，让用户以为是自己代码写错了。
+            if (!vao) {
+                showToast('✗ 渲染资源不可用，请刷新页面');
+                return;
+            }
             if (createProgram(code)) {
                 showToast('✓ Shader 编译成功');
                 closeEditor();
@@ -1363,16 +1530,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             syncUrlInput();
             const code = textarea.value.trim();
             if (currentSrc) {
-                const url = buildFileUrl();
-                navigator.clipboard.writeText(url).then(() => {
-                    showToast('✓ 文件链接已复制');
-                }).catch(() => {
-                    const inp = document.createElement('input');
-                    inp.value = url; document.body.appendChild(inp);
-                    inp.select(); document.execCommand('copy');
-                    document.body.removeChild(inp);
-                    showToast('✓ 链接已复制');
-                });
+                copyText(buildFileUrl(), '✓ 文件链接已复制');
             } else {
                 doShare('edit');
             }
@@ -1424,28 +1582,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // ---- 分享：压缩到 URL hash ----
         function doShare(mode) {
             const url = buildShareUrl(mode, textarea.value) + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
-            navigator.clipboard.writeText(url).then(() => {
-                showToast('✓ ' + (mode==='preview'?'预览':'编辑') + ' 链接已复制');
-            }).catch(() => {
-                const inp = document.createElement('input');
-                inp.value = url; document.body.appendChild(inp);
-                inp.select(); document.execCommand('copy');
-                document.body.removeChild(inp);
-                showToast('✓ 链接已复制');
-            });
+            return copyText(url, '✓ ' + (mode==='preview'?'预览':'编辑') + ' 链接已复制');
         }
         shareBtn.addEventListener('click', () => {
             if (currentSrc) {
-                const url = buildFileUrl();
-                navigator.clipboard.writeText(url).then(() => {
-                    showToast('✓ 文件链接已复制');
-                }).catch(() => {
-                    const inp = document.createElement('input');
-                    inp.value = url; document.body.appendChild(inp);
-                    inp.select(); document.execCommand('copy');
-                    document.body.removeChild(inp);
-                    showToast('✓ 链接已复制');
-                });
+                copyText(buildFileUrl(), '✓ 文件链接已复制');
             } else {
                 doShare('preview');
             }
@@ -1471,8 +1612,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 }
                 const data = JSON.parse(bodyText);
                 const url = buildServerUrl('preview', data.id);
-                await navigator.clipboard.writeText(url);
-                showToast('已发布，预览链接已复制');
+                // 服务端已发布成功，复制失败绝不能报成「发布失败」
+                const copied = await copyTextAsync(url);
+                if (copied) {
+                    showToast('已发布，预览链接已复制');
+                } else {
+                    encodedUrlInput.value = url;   // 兜底：让用户能手动复制
+                    showToast('已发布，但复制失败；链接已填入编辑器输入框，请手动复制');
+                }
             } catch (err) {
                 console.error('发布失败:', err);
                 showToast('☁ 发布失败 (' + err.message + ')，已改用本地分享（URL 会较长）');
@@ -1485,11 +1632,83 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         uploadBtn.addEventListener('click', () => uploadShader(textarea.value));
         shareServerBtn.addEventListener('click', () => uploadShader(textarea.value));
 
-        // ---- Ctrl+Enter ----
+        // ---- 编辑器按键：Ctrl+Enter 应用 / Tab 缩进 ----
+        const INDENT = '    ';
+
+        // 优先走 execCommand('insertText')：它会进原生撤销栈，Ctrl+Z 仍可用；
+        // 不可用时退回 setRangeText（丢撤销栈，但功能不丢）。
+        function replaceRange(text, start, end, selStart, selEnd) {
+            textarea.focus();
+            textarea.setSelectionRange(start, end);
+            let ok = false;
+            try { ok = document.execCommand('insertText', false, text); } catch (err) { ok = false; }
+            if (!ok) {
+                // setRangeText 不会派发 input 事件，而「清除内置 shader 来源标记」依赖它，
+                // 不补发的话：改过代码后点分享仍会生成 ?src= 短链，用户改动被静默丢弃。
+                textarea.setRangeText(text, start, end, 'end');
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            textarea.setSelectionRange(selStart, selEnd);
+        }
+
+        // 把选区扩展到整行范围
+        function lineBounds(selStart, selEnd) {
+            const v = textarea.value;
+            const start = v.lastIndexOf('\n', selStart - 1) + 1;
+            let end = v.indexOf('\n', selEnd);
+            if (end === -1) end = v.length;
+            return [start, end];
+        }
+
+        // 整块缩进 / 反缩进，返回内容是否发生变化
+        function shiftBlock(outdent) {
+            const v = textarea.value;
+            const selStart = textarea.selectionStart, selEnd = textarea.selectionEnd;
+            const [ls, le] = lineBounds(selStart, selEnd);
+            const block = v.slice(ls, le);
+            let headDelta = 0, totalDelta = 0;
+            const out = block.split('\n').map((line, i) => {
+                let delta = 0, result = line;
+                if (outdent) {
+                    const m = line.match(/^ {1,4}/);
+                    const n = m ? m[0].length : 0;
+                    if (n > 0) { delta = -n; result = line.slice(n); }
+                } else if (line.length > 0) {
+                    // 空行不缩进，避免留下无意义的尾随空格
+                    delta = INDENT.length;
+                    result = INDENT + line;
+                }
+                if (i === 0) headDelta = delta;
+                totalDelta += delta;
+                return result;
+            }).join('\n');
+            if (out === block) return false;
+            // 选区起点正好在行首时保持在行首，让新插入的缩进落在选区内（与主流编辑器一致）
+            const newStart = (selStart === ls) ? ls : Math.max(ls, selStart + headDelta);
+            replaceRange(out, ls, le, newStart, selEnd + totalDelta);
+            return true;
+        }
+
         textarea.addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 e.preventDefault();
                 applyShader(textarea.value);
+                return;
+            }
+            if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+
+            const hasSel = textarea.selectionStart !== textarea.selectionEnd;
+            if (e.shiftKey) {
+                // 反缩进。无选区或无缩进可去时不拦截 —— Shift+Tab 仍是「移出焦点」的逃生通道
+                if (hasSel && shiftBlock(true)) e.preventDefault();
+                return;
+            }
+            e.preventDefault();
+            if (hasSel) {
+                shiftBlock(false);
+            } else {
+                const at = textarea.selectionStart;
+                replaceRange(INDENT, at, at, at + INDENT.length, at + INDENT.length);
             }
         });
 
@@ -1544,21 +1763,28 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             resize();
             playPauseBtn.textContent = paused ? '▶' : '⏸';
             requestAnimationFrame(render);
+
+            // 延后到此处提示：toast 的 const 声明在 GL 初始化之后，那会儿还不能调用 showToast
+            if (glInitFailed) showToast('✗ WebGL 资源初始化失败，请刷新页面');
         }
 
         init();
 
-        window.addEventListener('resize', resize);
+        window.addEventListener('resize', () => resize());
 
         // 可见性（仅编辑模式）
         document.addEventListener('visibilitychange', () => {
-            if (isPreview) return;
-            if (document.hidden) { if (!paused) paused = true; }
-            else if (paused) {
-                paused = false;
-                const n = performance.now()/1000;
-                pauseOffset = (n - startTime) - (lastTime ? lastTime - startTime : 0);
+            // 切后台期间 rAF 不跑，render 无法逐帧累加，故回前台时一次性补偿这段空白。
+            // 用增量累加（而非赋值），才能和 render 里的冻结逻辑叠加而不是互相覆盖。
+            if (!document.hidden) {
+                const n = performance.now() / 1000;
+                if (lastTime) pauseOffset += n - lastTime;
+                lastTime = n;
             }
+            if (isPreview) return;
+            // 时间补偿统一由 render 每帧累加，此处只切换状态
+            if (document.hidden) { if (!paused) paused = true; }
+            else if (paused) { paused = false; }
             playPauseBtn.textContent = paused ? '▶' : '⏸';
         });
 
