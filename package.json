@@ -8,10 +8,12 @@
     "add:refresh": "node scripts/release-shader.js --refresh",
     "status": "node scripts/release-shader.js --status",
     "check": "node scripts/gen-shader-manifest.js --check",
+    "glsl:check": "node scripts/check-glsl.js",
+    "draft:check": "node scripts/check-glsl.js --drafts-only",
+    "ci:setup": "bash scripts/ci-setup.sh",
     "remove": "node scripts/remove-shader.js",
     "rm": "node scripts/remove-shader.js",
     "drafts:extract": "node scripts/extract-shader.js",
-
     "release": "node scripts/release-shader.js",
     "release:status": "node scripts/release-shader.js --status",
     "release:all": "node scripts/release-shader.js --all",
@@ -22,5 +24,9 @@
   "dependencies": {
     "@netlify/blobs": "^8.0.0",
     "vercel": "^54.20.0"
+  },
+  "devDependencies": {
+    "glslang-validator-prebuilt-predownloaded": "^0.0.2",
+    "playwright": "^1.63.0"
   }
 }

@@ -70,6 +70,11 @@ function main() {
             if (r.status !== 0) bad = true;
         }
 
+        // 最后一关：GLSL 编译 + 链接校验。只校验 manifest 引用的 —— 没被引用的
+        // 产物页面根本不会加载，让它把 CI 卡红没有意义。
+        const g = spawnSync(process.execPath, [path.join(__dirname, 'check-glsl.js'), '--manifest'], { stdio: 'inherit' });
+        if (g.status !== 0) bad = true;
+
         if (bad) process.exit(1);
         console.log(`✓ 校验通过（${paths.length} 个内置 shader）`);
         return;

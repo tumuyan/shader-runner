@@ -1,0 +1,43 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 缓存 Playwright 浏览器。key 带上 lockfile 哈希：换 playwright 版本
+      # 会连 chromium 版本一起变，缓存自动失效。
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # key 带 lockfile 哈希：换 playwright 版本会连 chromium 版本一起变，缓存自动失效。
+          # restore-keys 让小版本升级也能复用旧缓存（节省约 150MB 重新下载）。
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: npm ci
+
+      # --no-npm：依赖上面刚装过，别重复装
+      # runner 是 root，系统依赖可以直接装，无需 sudo
+      - name: Setup environment
+        run: npm run ci:setup -- --no-npm
+        env:
+          CI: 'true'
+
+      - name: Check
+        run: npm run check

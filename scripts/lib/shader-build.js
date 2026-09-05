@@ -104,6 +104,21 @@ ${escapeTemplate(opts.code)}\`
 `;
 }
 
+/**
+ * 只取 code 的宽松提取，给 GLSL 校验用。
+ *
+ * 与 CODE_BLOCK_RE 的区别：允许反引号后面跟尾随空格和行注释。手工编辑过的产物
+ * 常写成  `<code>\n` + 注释（` 后面直接跟 // xxx），严格正则会失配返回 null。
+ *
+ * 刻意不改 parseShaderFile —— 那里解析不出来要判成 foreign，好让 add / remove
+ * 拒绝动手；GLSL 校验只是想读代码，能读就读，不该改变产物的状态判定。
+ */
+const CODE_BLOCK_LOOSE_RE = /code:\s*`\n?([\s\S]*)`[^\n]*\n\s*\}\);/;
+function extractShaderCode(text) {
+    const m = String(text).match(CODE_BLOCK_LOOSE_RE);
+    return m ? unescapeTemplate(m[1]).replace(/^\n/, '') : null;
+}
+
 /** 解析产物文件；非本工具生成的返回 null */
 function parseShaderFile(text) {
     const code = text.match(CODE_BLOCK_RE);
@@ -307,6 +322,7 @@ module.exports = {
     ROOT, DRAFTS_DIR, SHADER_DIR, MANIFEST_FILE, GLSL_RE, SHADER_RE,
     rel, abs, sha1, normalizeGlsl, parseFrontmatter, titleCase,
     escapeTemplate, unescapeTemplate, renderShaderFile, parseShaderFile,
+    extractShaderCode,
     listDrafts, readDraftFile, listShaders, draftState, collectStatus,
     normalizeInput, resolveDraftInput, notFoundMessage,
     renderManifest, generateManifest, readManifestPaths

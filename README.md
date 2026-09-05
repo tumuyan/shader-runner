@@ -52,7 +52,7 @@ npx serve .        # 或走 HTTP
 
 ## 用 AI 开发 shader
 
-1. 选模型。国产模型目前不擅长 GLSL：gemini > chatgpt >> glm ≈ DeepSeek
+1. 选模型。个人感觉：gemini > qwen >> glm ≈ DeepSeek > hy
 2. 新建 `.glsl`，提示词：「参考附图，写一个能直接在 shadertoy 上运行的 shader，远景是……」
 3. 调试。把 GLSL 粘进页面文本框运行；报错就复制控制台信息给 AI，外观不对就描述或截图
 4. 发布。`npm run add xxx` 生成产物并刷新清单
@@ -81,11 +81,64 @@ drafts/xxx.glsl ──add──▶ shader/xxx.shader.js ──▶ shader/manifes
 | `npm run remove <名称>` | 移出内置列表：删除产物 + 刷新清单（**绝不删草稿**） |
 | `npm run status` | 查看状态 |
 | `npm run add:all` | 重组装已加入过的草稿（不会新增） |
-| `npm run check` | 总校验（CI 用）：清单同步 + 字段检查 + 草稿同步 |
+| `npm run check` | 总校验（CI 用）：清单同步 + 字段检查 + 草稿同步 + **GLSL 运行校验** |
+| `npm run glsl:check` | 只做 GLSL 运行校验（`check` 的最后一关） |
+| `npm run draft:check` | 只校验 `drafts/*.glsl` |
+| `npm run ci:setup` | CI / 新机器的环境准备（装依赖 + Chromium + 自检，幂等） |
 | `npm run add:check` | 只查草稿与产物是否同步（`check` 的一步） |
 | `npm run drafts:extract -- shader/x.js` | 从产物反向导出可编辑草稿 |
 
-`check` 是 `add:check` 的超集：除了草稿同步，还校验 `manifest.js` 与目录一致、每个产物的 `path` / `label` 字段正确。旧的 `npm run shaders:check` 保留为别名。
+`check` 是 `add:check` 的超集：除了草稿同步，还校验 `manifest.js` 与目录一致、每个产物的 `path` / `label` 字段正确，最后一关是 GLSL 运行校验。旧的 `npm run shaders:check` 保留为别名。
+
+### GLSL 运行校验
+
+判断 shader **能不能在浏览器里真的跑起来**，而不只是「语法看起来对」。
+
+```bash
+npm run glsl:check                  # 校验 manifest 引用的全部（默认）
+npm run draft:check                 # 只校验 drafts/*.glsl
+npm run glsl:check -- --all         # shader/ 下全部，含未被 manifest 引用的
+npm run glsl:check -- rain aurora   # 指定若干，短名 / 路径都行
+npm run glsl:check -- --backend glslang   # 指定后端
+```
+
+| 后端 | 做法 | 结论强度 |
+|---|---|---|
+| `browser`（默认） | 真实 WebGL2 上下文里编译 + 链接 + 渲染多帧，用的就是浏览器的 ANGLE | **权威** |
+| `glslang` | 静态编译 + 链接校验 | 参考 |
+
+以浏览器为准：glslang 与浏览器的 ANGLE 是两个实现，对规范的解读并不一致 —— 仓库里的
+`70s-melt-color` 在浏览器里跑得好好的，glslang 却判它失败。有浏览器就用浏览器，没有才回退，
+且回退时会标注结论强度较低。
+
+`glslang` 报的已知分歧只是**警告**（降级前会剔除该写法再编译一次，确认没别的问题才放行）；
+真正的语法错、类型错、缺失定义一律报错。画面偏暗/全黑同样只提示不判失败 —— 渐入型 shader
+开头几秒本来就接近全黑，判失败会误伤。
+
+浏览器后端依赖 `playwright`：
+
+```bash
+npm i -D playwright && npx playwright install chromium
+# 容器里通常还缺系统库：npx playwright install-deps chromium
+```
+
+两个后端都没装时跳过并退出 0（它们是 devDependency，不该让没装的人红）；CI 里 `CI=true` 或
+`--require` 会把「跳过」也判为失败，且**不允许静默降级到弱后端** —— 浏览器是权威，它不可用时
+宁可红，逼人修环境，而不是用弱结论假装绿。确实要放行就显式加 `--allow-fallback`。
+
+### CI
+
+```bash
+npm run ci:setup                 # 装 npm 依赖 + Chromium + 系统库，最后跑环境自检
+npm run ci:setup -- --no-npm     # 依赖已由 actions/setup-node 装好时
+npm run ci:setup -- --no-deps    # 镜像已预装系统库时
+npm run ci:setup -- --no-verify  # 只装不验
+```
+
+幂等，可重复执行。最后一步必跑 `--self-test`：装完不等于能跑 —— 缺系统库时 Chromium 装得上但
+启动即崩。自检正反都验（一个正确的 shader 必须通过，三个有问题的必须被抓到），避免后端
+「什么都返回通过」也能蒙混过关。仓库已带 `.github/workflows/check.yml`（push/PR 触发），
+含 Playwright 浏览器缓存。
 
 `<名称>` 怎么写都行，下面四种等价：`underwater` / `underwater.glsl` / `drafts/underwater.glsl` / `shader/underwater.shader.js`。
 只做精确匹配、不做前缀补全 —— 宁可报错列出候选，也不猜你是要 `shattered-space-v11` 还是 `-v12`。
