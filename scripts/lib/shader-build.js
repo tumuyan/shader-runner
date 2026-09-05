@@ -289,11 +289,56 @@ function collectStatus() {
     return { drafts, orphans };
 }
 
+/**
+ * 清单里的单条记录 { path, label }。
+ *
+ * label 必须写进清单：页面改成按需加载后，启动时只加载清单，shader 本体
+ * （label 原本住在里面）还没执行，下拉列表就只能靠清单里的这份来渲染。
+ *
+ * 读 label 刻意分两步。先用 parseShaderFile（权威，认得出的产物走它）；它返回
+ * null 时不代表 label 坏了 —— 手工编辑过的产物常被判 foreign，那是有意的，好让
+ * add / remove 拒绝动手。而清单只是索引，读个 label 不必依赖整块 code 的结构，
+ * 所以再单独抠一次 label 字段。真读不出来才退回文件名 Title Case，绝不因某条
+ * label 有问题就让整个清单生成失败。
+ */
+function manifestEntry(rel) {
+    let label = null;
+    try {
+        const src = fs.readFileSync(abs(rel), 'utf8');
+        const parsed = parseShaderFile(src);
+        if (parsed && parsed.label) label = parsed.label;
+        if (label === null) {
+            const lm = src.match(/label\s*:\s*'((?:[^'\\]|\\.)*)'/);
+            if (lm) label = lm[1].replace(/\\'/g, "'");
+        }
+    } catch (e) { /* 读不到就退回文件名 */ }
+    if (label === null) {
+        label = titleCase(rel.replace(/^.*\//, '').replace(SHADER_RE, ''));
+    }
+    return { path: rel, label };
+}
+
+/** 把任意字符串写成单引号 JS 字面量的内容部分（反斜杠与单引号都要转义） */
+function escapeSingleQuoted(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/** 上一步的逆运算。只认 \\ 与 \' 两种转义，其余反斜杠按原样保留。 */
+function unescapeSingleQuoted(s) {
+    return String(s).replace(/\\(['\\])/g, '$1');
+}
+
 function renderManifest(paths) {
-    const lines = paths.map(p => "            '" + p + "'").join(',\n');
+    const lines = paths.map(p => {
+        const e = manifestEntry(p);
+        // 先转义反斜杠再转义引号：只转义引号的话，label 里的 \ 会与原样字符拼成
+        // 转义序列（'a\b' 在浏览器里是退格符），清单说的一个样、页面拿到另一个样。
+        return "        { path: '" + e.path + "', label: '" + escapeSingleQuoted(e.label) + "' }";
+    }).join(',\n');
     return `// 自动生成，请勿手工编辑。
 // 由 \`npm run release -- --refresh\` 扫描 shader/*.shader.js 生成；改动后请重新运行并一起提交。
 // 新增内置 shader：把 xxx.glsl 放进 drafts/ 目录 → npm run release -- drafts/xxx.glsl。
+// label 随 path 一并给出：页面按需加载 shader.js，启动时只读这份清单填下拉列表。
 (function (w) {
     w.__SHADER_MANIFEST__ = [
 ${lines}
@@ -308,14 +353,53 @@ function generateManifest() {
     return paths;
 }
 
-function readManifestPaths() {
-    if (!fs.existsSync(MANIFEST_FILE)) return null;
+/**
+ * 读清单。返回 { format, entries }，format 有四种：
+ *
+ *   'entries' —— 新格式（{ path, label }），label 就是清单里写的那个
+ *   'paths'   —— 旧格式（纯路径数组），label 由产物现算
+ *   'empty'   —— 文件在，但一条都没解析出来
+ *   'missing' —— 文件不存在（entries 为 null）
+ *
+ * 区分 'entries' 与 'paths' 是给校验用的：'paths' 的 label 是现算的，拿它跟产物
+ * 比必然相等 —— 「清单没刷新」这件事在旧格式下永远查不出来，是假绿。运行时能读
+ * 旧格式（normalizeManifest 兜底成文件名 Title Case），但 label 会退化（Auroras
+ * → Aurora），所以 --check 要求清单必须是新格式。
+ */
+function readManifest() {
+    if (!fs.existsSync(MANIFEST_FILE)) return { format: 'missing', entries: null };
     const src = fs.readFileSync(MANIFEST_FILE, 'utf8');
-    const paths = [];
-    const re = /^\s*'([^']+)',?\s*$/gm;
+
+    const entries = [];
+    const re = /\{\s*path\s*:\s*'([^']+)'\s*,\s*label\s*:\s*'((?:[^'\\]|\\.)*)'\s*\}/g;
     let m;
-    while ((m = re.exec(src)) !== null) paths.push(m[1]);
-    return paths;
+    while ((m = re.exec(src)) !== null) {
+        if (!SHADER_RE.test(m[1])) continue;
+        entries.push({ path: m[1], label: unescapeSingleQuoted(m[2]) });
+    }
+    if (entries.length) return { format: 'entries', entries };
+
+    // 旧格式：纯路径数组（那时页面全量加载，label 从产物里取）。label 现算。
+    const paths = [];
+    const old = /^\s*'([^']+)',?\s*$/gm;
+    let o;
+    while ((o = old.exec(src)) !== null) {
+        if (SHADER_RE.test(o[1])) paths.push(o[1]);
+    }
+    if (paths.length) return { format: 'paths', entries: paths.map(manifestEntry) };
+    return { format: 'empty', entries: [] };
+}
+
+/** 读清单的 { path, label } 列表；文件不存在返回 null。 */
+function readManifestEntries() {
+    const r = readManifest();
+    return r.format === 'missing' ? null : r.entries;
+}
+
+/** 只要路径。清单缺失时返回 null，和旧行为一致。 */
+function readManifestPaths() {
+    const entries = readManifestEntries();
+    return entries === null ? null : entries.map(e => e.path);
 }
 
 module.exports = {
@@ -325,5 +409,7 @@ module.exports = {
     extractShaderCode,
     listDrafts, readDraftFile, listShaders, draftState, collectStatus,
     normalizeInput, resolveDraftInput, notFoundMessage,
-    renderManifest, generateManifest, readManifestPaths
+    manifestEntry, renderManifest, generateManifest,
+    escapeSingleQuoted, unescapeSingleQuoted,
+    readManifest, readManifestEntries, readManifestPaths
 };

@@ -2,35 +2,31 @@
 
 一个纯前端的 GLSL 着色器运行器，支持编辑、预览、分享与服务端发布。
 
-## 为什么选择本项目
-- 可静态托管。不依赖nodejs/python/java/php等环境。
-- 单文件特效。1个特效有且只有1个文件。便于AI辅助开发和复制分享。
-- 可移植性强。大量（并非全部）shaderstoy的shader可以快速复制到本环境中使用；本环境适用的shader 100%能够复制到shaderstoy中使用。
+- **可静态托管** — 不依赖 Node / Python / Java / PHP 等运行环境
+- **单文件特效** — 一个特效有且只有一个文件，便于 AI 辅助开发与复制分享
+- **可移植性强** — 大量（并非全部）ShaderToy shader 可直接复制进来用；本环境能跑的 shader 100% 能放回 ShaderToy
 
-## 功能
-
-- **编辑模式** — 粘贴 ShaderToy 的 `mainImage` GLSL 代码，实时编译运行
-- **预览模式** — 全屏渲染，无 UI 干扰，通过 URL 参数控制
-- **内置 shader 选择器** — 下拉列表切换内置 shader，切换即时生效
-- **本地文件打开** — 从本地选择 `.glsl` / `.frag` 文件直接加载
-- **本地压缩分享** — lz-string 压缩 shader 代码到 URL hash 中，无需服务器存储
-- **文件短链接分享** — 内置 shader 自动生成 `?src=` 短链接，无需压缩编码
-- **服务端发布** — 使用 Netlify Blob Storage 存储，URL 只含 8 位短 ID
-- **帧率限制** — 设置 FPS 上限，降低 GPU 占用
-- **分辨率限制** — 限制渲染分辨率最大边长，降低 GPU 开销，画面自动缩放填满
-- **自动暂停** — 页面不可见时自动暂停，恢复后继续；预览模式支持加载后按毫秒自动暂停
-- **合成尺寸** — 实时显示渲染分辨率与帧率，帮助评估性能
-![](img/screenshot.jpg)
+![截图](img/screenshot.jpg)
 
 ## 快速开始
 
-使用服务器部署，或者浏览器打开本地网页均可（由于 `file://` 属于非安全上下文，部分功能受限）
-
+浏览器直接打开即可；走 HTTP 能解锁全部功能（`file://` 属于非安全上下文，剪贴板 API 不可用，分享按钮会静默失败）。
 
 ```bash
 open index.html    # 直接打开
 npx serve .        # 或走 HTTP
 ```
+
+## 功能
+
+- **编辑模式** — 粘贴 ShaderToy 的 `mainImage` GLSL 代码，实时编译运行
+- **预览模式** — 全屏渲染，无 UI 干扰
+- **内置 shader 选择器** — 下拉切换，即时生效（按需加载，首屏不下载任何 shader）
+- **本地文件打开** — 直接加载 `.glsl` / `.frag` 等文件
+- **本地压缩分享** — lz-string 把代码压进 URL hash，无需服务器存储
+- **短链接分享** — 内置 shader 生成 `?src=`，外部 JS 生成 `?js=`
+- **服务端发布** — Netlify Blob 存储，URL 只含 8 位短 ID
+- **性能控制** — 帧率上限、分辨率上限（自动缩放填满）、页面不可见自动暂停、实时显示分辨率与帧率
 
 ## URL 参数
 
@@ -39,20 +35,19 @@ npx serve .        # 或走 HTTP
 | `mode` | 页面模式: `edit`（默认）或 `preview` | `?mode=preview` |
 | `code` | lz-string 压缩的 shader（放在 hash 中） | `#code=L8RjIMoz...` |
 | `id` | 服务端存储的 shader ID | `#id=Ab3xK9mQ` |
-| `src` | 加载内置 shader 文件路径 | `?src=shader/synthwave.shader.js` |
+| `src` | 内置 shader 文件路径 | `?src=shader/synthwave.shader.js` |
+| `js` | 外部 JS 里的 shader | `?js=https%3A%2F%2Fcdn.example.com%2Fmy.js` |
 | `maxSize` | 渲染分辨率最大边长（px），0=不限 | `?maxSize=720` |
 | `fpsCap` | 帧率上限，0=不限 | `?fpsCap=30` |
 | `autoPauseMs` | 仅预览模式：加载后按毫秒自动暂停 | `?autoPauseMs=3000` |
 
-```
-#code=...   本地压缩，纯前端
-#id=...     服务端发布
-?src=...    文件短链接
-```
+优先级：`code` > `id` > `src` > `js` > 默认 shader。
+
+`?js=` 能指向任意 http(s) 地址，但目标服务器必须满足三个响应头（源码托管站的 raw 接口基本都不满足）—— 详见 [docs/external-js.md](docs/external-js.md)。
 
 ## 用 AI 开发 shader
 
-1. 选模型。个人感觉：gemini > qwen >> glm ≈ DeepSeek > hy
+1. 选模型。个人经验：gemini > qwen >> glm ≈ DeepSeek > hy
 2. 新建 `.glsl`，提示词：「参考附图，写一个能直接在 shadertoy 上运行的 shader，远景是……」
 3. 调试。把 GLSL 粘进页面文本框运行；报错就复制控制台信息给 AI，外观不对就描述或截图
 4. 发布。`npm run add xxx` 生成产物并刷新清单
@@ -63,185 +58,30 @@ npm run add xxx                          # 加入内置：生成产物 + 刷新�
 git add shader/ && git commit            # 只提交产物，drafts/ 留在本机
 ```
 
-## 草稿与内置列表
+完整的命令、状态机与注意事项见 [docs/shader-workflow.md](docs/shader-workflow.md)。
 
-```
-drafts/xxx.glsl ──add──▶ shader/xxx.shader.js ──▶ shader/manifest.js
-（开发中，不提交）    （产物，提交）          （清单，自动刷新，提交）
-        ▲                     │  ▲
-        │                     │  └── remove（只删产物，不动草稿）
-        └──────extract────────┘
-```
+## 校验
 
-`drafts/` 是开发中的 GLSL，**默认不提交**，只有显式 `add` 才会成为内置 shader。
-
-| 命令 | 作用 |
-|---|---|
-| `npm run add <名称>` | 加入内置列表，自动刷新清单（可传多个；不带参数 = 显示状态，只读） |
-| `npm run remove <名称>` | 移出内置列表：删除产物 + 刷新清单（**绝不删草稿**） |
-| `npm run status` | 查看状态 |
-| `npm run add:all` | 重组装已加入过的草稿（不会新增） |
-| `npm run check` | 总校验（CI 用）：清单同步 + 字段检查 + 草稿同步 + **GLSL 运行校验** |
-| `npm run glsl:check` | 只做 GLSL 运行校验（`check` 的最后一关） |
-| `npm run draft:check` | 只校验 `drafts/*.glsl` |
-| `npm run ci:setup` | CI / 新机器的环境准备（装依赖 + Chromium + 自检，幂等） |
-| `npm run add:check` | 只查草稿与产物是否同步（`check` 的一步） |
-| `npm run drafts:extract -- shader/x.js` | 从产物反向导出可编辑草稿 |
-
-`check` 是 `add:check` 的超集：除了草稿同步，还校验 `manifest.js` 与目录一致、每个产物的 `path` / `label` 字段正确，最后一关是 GLSL 运行校验。旧的 `npm run shaders:check` 保留为别名。
-
-### GLSL 运行校验
-
-判断 shader **能不能在浏览器里真的跑起来**，而不只是「语法看起来对」。
-
-```bash
-npm run glsl:check                  # 校验 manifest 引用的全部（默认）
-npm run draft:check                 # 只校验 drafts/*.glsl
-npm run glsl:check -- --all         # shader/ 下全部，含未被 manifest 引用的
-npm run glsl:check -- rain aurora   # 指定若干，短名 / 路径都行
-npm run glsl:check -- --backend glslang   # 指定后端
-```
-
-| 后端 | 做法 | 结论强度 |
-|---|---|---|
-| `browser`（默认） | 真实 WebGL2 上下文里编译 + 链接 + 渲染多帧，用的就是浏览器的 ANGLE | **权威** |
-| `glslang` | 静态编译 + 链接校验 | 参考 |
-
-以浏览器为准：glslang 与浏览器的 ANGLE 是两个实现，对规范的解读并不一致 —— 仓库里的
-`70s-melt-color` 在浏览器里跑得好好的，glslang 却判它失败。有浏览器就用浏览器，没有才回退，
-且回退时会标注结论强度较低。
-
-`glslang` 报的已知分歧只是**警告**（降级前会剔除该写法再编译一次，确认没别的问题才放行）；
-真正的语法错、类型错、缺失定义一律报错。画面偏暗/全黑同样只提示不判失败 —— 渐入型 shader
-开头几秒本来就接近全黑，判失败会误伤。
-
-浏览器后端依赖 `playwright`：
-
-```bash
-npm i -D playwright && npx playwright install chromium
-# 容器里通常还缺系统库：npx playwright install-deps chromium
-```
-
-两个后端都没装时跳过并退出 0（它们是 devDependency，不该让没装的人红）；CI 里 `CI=true` 或
-`--require` 会把「跳过」也判为失败，且**不允许静默降级到弱后端** —— 浏览器是权威，它不可用时
-宁可红，逼人修环境，而不是用弱结论假装绿。确实要放行就显式加 `--allow-fallback`。
-
-### CI
-
-```bash
-npm run ci:setup                 # 装 npm 依赖 + Chromium + 系统库，最后跑环境自检
-npm run ci:setup -- --no-npm     # 依赖已由 actions/setup-node 装好时
-npm run ci:setup -- --no-deps    # 镜像已预装系统库时
-npm run ci:setup -- --no-verify  # 只装不验
-```
-
-幂等，可重复执行。最后一步必跑 `--self-test`：装完不等于能跑 —— 缺系统库时 Chromium 装得上但
-启动即崩。自检正反都验（一个正确的 shader 必须通过，三个有问题的必须被抓到），避免后端
-「什么都返回通过」也能蒙混过关。仓库已带 `.github/workflows/check.yml`（push/PR 触发），
-含 Playwright 浏览器缓存。
-
-`<名称>` 怎么写都行，下面四种等价：`underwater` / `underwater.glsl` / `drafts/underwater.glsl` / `shader/underwater.shader.js`。
-只做精确匹配、不做前缀补全 —— 宁可报错列出候选，也不猜你是要 `shattered-space-v11` 还是 `-v12`。
-旧的 `npm run release …` 仍然可用（`add` 的等价别名）。
-
-`remove` 只删 `shader/*.shader.js`，`drafts/*.glsl` 一份不动：草稿是没提交的手工资产。移除后草稿回到「未发布」，`npm run add xxx` 能原样加回来。
-产物不是本工具生成的 / 没有对应草稿 / 含手工改动时，`remove` 会拒绝并打印补救命令，确认要丢就加 `--force`。
-
-`drafts:extract` 的意义：草稿不入库，干净 `git clone` 只有产物、没有 GLSL 源。想改已发布的 shader，先导出成草稿，改完再发布。
-
-### draft frontmatter（可选）
-
-```glsl
-// @label: 显示名称      // 缺省用文件名推导：aero-waves → Aero Waves
-// @name:  aero-waves    // 产物名，缺省用文件名
-#define TURN 6.283185307
-```
-
-写在文件开头，是元数据，不参与代码指纹计算。只认这两个 key，其它 `// @xxx:` 注释一律视为普通 GLSL 注释。
-
-### ⚠️ 命令里出现 flag 时必须加 `--`
-
-npm 会吞掉 `--` 之前的 flag，**且不报错**：
-
-| 写法 | 结果 |
-|---|---|
-| `npm run add a` | ✓ 纯位置参数，无需 `--` |
-| `npm run add:all` | ✓ 固定动作走子命令，无需 `--` |
-| `npm run add -- a --label X` | ✓ 有 flag，加了 `--` |
-| `npm run add a --label X` | ✗ `X` 被当成文件名 |
-| `npm run drafts:extract shader/x.js --force` | ✗ 实际没有 `--force` |
-
-flag 写在文件名后面一样会被吞。所以常用动作都做成了不带 flag 的子命令（`add:all` / `add:check` / `add:refresh` / `status` / `check`），根本没得吞。
-不带参数时 `add` 是只读的，漏写 `--` 只会白跑一次，不会误改文件。
-
-多个名称一起处理时，只要有一个被拦截就整体退出码 1（不会误判为全部成功），已成功的部分仍会写盘并同步刷新清单。
-
-### 草稿与产物的六种状态
-
-用三个哈希（草稿当前值 / 产物记录指纹 / 产物内代码实际值）判断哪边动过：
-
-| 状态 | 含义 | `add` 行为 | `remove` 行为 | `--check` |
-|---|---|---|---|---|
-| `未发布` | 产物不存在 | 新建 | 无变化（提示） | 通过 |
-| `未追踪` | 产物非本工具生成（历史 shader） | 拒绝，需 `--force` 接管 | 拒绝，需 `--force` | 通过 |
-| `已同步` | 两边都没动 | 无操作 | 删除产物 | 通过 |
-| `草稿有更新` | 只有草稿改了 | 用草稿更新产物 | 删除产物（草稿保留最新） | **失败** |
-| `产物手工改` | 只有产物被手工编辑 | **拒绝**（会破坏手工改动） | 拒绝，需 `--force` | 仅警告 |
-| `冲突` | 两边都改过 | **拒绝**，需人工合并 | 拒绝，需 `--force` | **失败** |
-
-因此：人工调优产物不会让 CI 报警，AI 跑 `add` 也绝不会静默覆盖手工改动。把手工改动同步回草稿：
-
-```bash
-npm run drafts:extract -- shader/xxx.shader.js --force   # 导回草稿
-npm run add xxx                                          # 刷新指纹
-```
-
-`--force` 只在明确要「丢弃另一边」时使用。
-
-### 注意事项
-
-- **不要把 `drafts/` 写进 `.gitignore`**：云环境只缓存未被 git 排除的文件，忽略会导致草稿丢失。靠提交纪律不提交即可。
-- 产物由工具生成；**人可以直接手工编辑**（工具会识别并保护），AI 则一律走 `drafts/*.glsl` → `add`。
+`npm run check` 是总校验：清单同步 + 字段检查 + 草稿同步 + **GLSL 运行校验**（真实 WebGL2 上下文里编译、
+链接、渲染多帧，而不是只做静态语法检查）。细节与 CI 配置见 [docs/checking.md](docs/checking.md)。
 
 ## 部署
 
-**Netlify** — push 即部署，自动配置 Serverless Function 与 Blob Storage，支持「发布」。本地测试：`npm install && ntl dev`。
-
-**Vercel** — 支持「发布」，存储默认在内存（重启丢失），可换 Vercel KV / Blob。
-
-**任意静态托管**（GitHub Pages / cnb.run / Cloudflare Pages）— 上传 `index.html` 与 `shader/` 即可，但不支持「发布」功能。
-
-## 项目结构
-
-```
-/
-├── index.html                  # 主页面（含所有逻辑）
-├── drafts/                     # 开发中的 GLSL 草稿（不提交，云环境缓存）
-│   ├── _temple.glsl            # 草稿模板（_ 开头，不参与扫描）
-│   └── *.glsl
-├── shader/
-│   ├── manifest.js             # 自动生成的清单
-│   └── *.shader.js             # 内置 shader（AI 勿手工编辑，人可）
-├── scripts/                    # 加入 / 移除 / 导出 / 清单工具（零依赖）
-│   ├── release-shader.js（add）, remove-shader.js（remove）
-│   ├── extract-shader.js, gen-shader-manifest.js
-│   └── lib/shader-build.js
-├── img/                        # 文档截图
-├── api/shader.js               # Vercel Serverless Function
-├── netlify/functions/shader.js # Netlify Function
-├── netlify.toml, vercel.json, package.json
-└── README.md
-```
+| 平台 | 说明 |
+|---|---|
+| **Netlify** | push 即部署，自动配置 Serverless Function 与 Blob Storage，支持「发布」。本地测试：`npm install && ntl dev` |
+| **Vercel** | 支持「发布」，存储默认在内存（重启丢失），可换 Vercel KV / Blob |
+| **任意静态托管**（GitHub Pages / cnb.run / Cloudflare Pages） | 上传 `index.html`、`css/`、`js/` 与 `shader/` 即可，但不支持「发布」 |
 
 ## ShaderToy Uniforms
 
 | 变量 | 类型 | 说明 |
 |---|---|---|
-| `iResolution` | `vec3` | 画布分辨率 (xy) |
+| `iResolution` | `vec3` | 画布分辨率 (xy)，z 恒为 1 |
 | `iTime` | `float` | 运行时间（秒） |
 | `iTimeDelta` | `float` | 帧间隔 |
 | `iFrame` | `float` | 帧编号 |
-| `iMouse` | `vec4` | 鼠标 (xy=当前, zw=按下) |
+| `iMouse` | `vec4` | 鼠标 (xy=当前, zw=按下；未交互时为负) |
 | `iDate` | `vec4` | 年/月/日/秒比例 |
 | `iSampleRate` | `float` | 采样率 = 44100 |
 | `iChannel0~3` | `sampler2D` | 纹理通道（默认白色） |
@@ -252,4 +92,38 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 ```
 
+另提供 `texture2D()` 兼容别名，可直接粘贴 ShaderToy 代码。
+
+## 项目结构
+
+```
+/
+├── index.html              # 页面骨架：只放 DOM 与按顺序引入的 <script>/<link>
+├── css/app.css             # 全部样式
+├── js/                     # 浏览器运行时（普通 <script>，非 ES module）
+│   ├── vendor/lz-string.js # 第三方库，原样搬运，禁止改动
+│   ├── config.js           # 常量（默认 shader、默认值、接口路径、缩进）
+│   ├── state.js            # 跨模块共享的可变状态
+│   ├── params.js           # URL 参数（query + hash）
+│   ├── ui.js               # DOM 引用 + toast + 剪贴板 + 面板开合
+│   ├── codec.js            # lz 编解码 + 分享/发布链接构建
+│   ├── renderer.js         # WebGL2：编译 / program / 资源 / 渲染循环 / 鼠标 / 暂停
+│   ├── catalog.js          # 内置清单、?js= 外部源、本地文件、应用 shader
+│   ├── share.js            # 分享（压进 URL）与发布（上传换短链）
+│   ├── editor.js           # 编辑器按键（Ctrl+Enter / Tab）与链接解码
+│   └── app.js              # 启动编排 + 全局监听
+├── drafts/                 # 开发中的 GLSL（不提交，且勿写进 .gitignore）
+│   └── _temple.glsl        # 模板（_ 开头，不参与扫描）
+├── shader/                 # 产物 + 清单（自动生成，提交）
+├── scripts/                # 加入 / 移除 / 导出 / 清单 / 校验工具（Node 侧，零运行时依赖）
+├── docs/                   # 分主题文档
+├── api/shader.js           # Vercel Function
+└── netlify/functions/shader.js  # Netlify Function
+```
+
 技术栈：WebGL2 + lz-string，纯 HTML/CSS/JS 无外部依赖；服务端发布可选 Netlify Blob / Vercel Functions。
+
+`js/` 里的脚本是有意不用 ES module 的：`file://` 下模块请求会被 CORS 拦掉，而这个页面必须能双击直接打开。
+代价是没有 import/export，模块之间靠**加载顺序 + 共享全局词法作用域**通信 —— 所以顺序即依赖顺序
+（`index.html` 底部的 `<script>` 列表就是依赖图，不要随意调换），跨模块共享的状态统一放在 `js/state.js`、
+常量放在 `js/config.js`。每个文件顶部都写明了「依赖 / 被依赖」。

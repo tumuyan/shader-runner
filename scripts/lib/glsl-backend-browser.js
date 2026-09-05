@@ -6,7 +6,7 @@
  * ANGLE，而 glslang 只是另一个实现，两者对规范的解读并不一致（见
  * glsl-backend-glslang.js 里的 BROWSER_DIVERGENT）。
  *
- * 环境必须复刻 index.html 的运行时：默认纹理、iResolution.z=1、各 uniform 初值。
+ * 环境必须复刻 js/renderer.js 的运行时：默认纹理、iResolution.z=1、各 uniform 初值。
  * 少一样就会误判 —— rain 依赖 iChannel0，不绑纹理就渲染成纯黑。
  */
 const W = require('./glsl-wrap');
@@ -36,7 +36,7 @@ function pageFn(args) {
         return { ok: true, shader: s };
     }
 
-    // 复刻 index.html initGL()：默认纹理绑到 iChannel0-3
+    // 复刻 js/renderer.js initGLResources()：默认纹理绑到 iChannel0-3
     const dfl = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, dfl);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tex.width, tex.height, 0,
@@ -49,7 +49,7 @@ function pageFn(args) {
     const v = compile(vert, gl.VERTEX_SHADER);
     if (!v.ok) return { fatal: '顶点着色器编译失败: ' + v.log };
 
-    // 复刻 index.html：全屏三角形
+    // 复刻 js/renderer.js：全屏三角形
     const vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);

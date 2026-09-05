@@ -1,24 +1,28 @@
 'use strict';
 /**
- * GLSL 包装器 —— 与 index.html 里的 VERTEX_SHADER / buildFragmentShader 保持同源。
+ * GLSL 包装器 —— 与 js/renderer.js 里的 VERTEX_SHADER / buildFragmentShader 保持同源。
  *
  * 浏览器真正编译的是「包装器 + 用户代码」，不是 *.glsl 原文。只校验原文会漏掉
  * 两类只有包装后才暴露的错误：
  *   1. 与包装器冲突：重复 #version、precision 重声明、重复定义 fragColor 等
  *   2. 链接期错误：mainImage 未定义 / 签名不符（编译能过、链接失败 → 页面黑屏）
  *
- * index.html 是零构建的单文件应用，不能 require 本模块，所以这里存一份副本，
- * 并用 verifyAgainstIndexHtml() 比对 sha1 —— 改了 index.html 忘了同步这里会直接报错，
+ * 页面是零构建的普通 <script> 应用，不能 require 本模块，所以这里存一份副本，
+ * 并用 verifyAgainstRuntime() 比对 sha1 —— 改了运行时忘了同步这里会直接报错，
  * 避免出现「校验通过但线上炸」。
+ *
+ * 模板字符串里的缩进属于 GLSL 文本的一部分，别因为「看起来没对齐」去整理它，
+ * 那会立刻触发漂移。
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const INDEX_HTML = path.join(ROOT, 'index.html');
+/** 包装器的真身在运行时脚本里（index.html 只负责按序加载它们） */
+const RUNTIME_SRC = path.join(ROOT, 'js', 'renderer.js');
 
-/** 与 index.html 中 buildFragmentShader 的模板逐字符一致 */
+/** 与 js/renderer.js 中 buildFragmentShader 的模板逐字符一致 */
 const FRAG_TEMPLATE = `#version 300 es
         precision highp float;
         uniform vec3  iResolution;
@@ -41,7 +45,7 @@ const FRAG_TEMPLATE = `#version 300 es
         \${userCode}
         `;
 
-/** 与 index.html 中 VERTEX_SHADER 逐字符一致 */
+/** 与 js/renderer.js 中 VERTEX_SHADER 逐字符一致 */
 const VERT_TEMPLATE = `#version 300 es
         precision highp float;
         in vec2 aPosition; out vec2 vUv;
@@ -68,34 +72,38 @@ function fragmentLineOffset() {
     return i < 0 ? 0 : i;   // 该行索引 i → 包装后行号 i+1，用户第 1 行正好落在这里
 }
 
-/** 从 index.html 现场提取两份模板；提取不到返回 null */
-function readIndexTemplates() {
-    if (!fs.existsSync(INDEX_HTML)) return null;
-    const html = fs.readFileSync(INDEX_HTML, 'utf8');
-    const f = html.match(FRAG_RE), v = html.match(VERT_RE);
+/** 从 js/renderer.js 现场提取两份模板；提取不到返回 null */
+function readRuntimeTemplates() {
+    if (!fs.existsSync(RUNTIME_SRC)) return null;
+    const src = fs.readFileSync(RUNTIME_SRC, 'utf8');
+    const f = src.match(FRAG_RE), v = src.match(VERT_RE);
     if (!f || !v) return null;
     return { frag: f[1], vert: v[1] };
 }
 
 /**
- * 校验本模块与 index.html 是否漂移。返回 { ok, problems[] }。
- * index.html 缺失或提取失败时不算漂移 —— 单文件应用被拆开时不要误报。
+ * 校验本模块与运行时脚本是否漂移。返回 { ok, problems[] }。
+ * 文件缺失或提取失败时算漂移 —— 那意味着包装器被搬走了或改名了，
+ * 这时候「通过」只是因为没比对上任何东西，是假绿。
  */
-function verifyAgainstIndexHtml() {
-    const live = readIndexTemplates();
-    if (!live) return { ok: true, problems: [] };
+function verifyAgainstRuntime() {
+    const live = readRuntimeTemplates();
+    if (!live) {
+        return { ok: false, problems: ['无法从 ' + path.relative(ROOT, RUNTIME_SRC)
+            + ' 提取 GLSL 包装器（VERTEX_SHADER / buildFragmentShader）—— 文件被移动或改名了？'] };
+    }
     const problems = [];
     if (sha1(live.frag) !== sha1(FRAG_TEMPLATE)) {
-        problems.push('index.html 的 buildFragmentShader 与 scripts/lib/glsl-wrap.js 的 FRAG_TEMPLATE 不一致');
+        problems.push('js/renderer.js 的 buildFragmentShader 与 scripts/lib/glsl-wrap.js 的 FRAG_TEMPLATE 不一致');
     }
     if (sha1(live.vert) !== sha1(VERT_TEMPLATE)) {
-        problems.push('index.html 的 VERTEX_SHADER 与 scripts/lib/glsl-wrap.js 的 VERT_TEMPLATE 不一致');
+        problems.push('js/renderer.js 的 VERTEX_SHADER 与 scripts/lib/glsl-wrap.js 的 VERT_TEMPLATE 不一致');
     }
     return { ok: problems.length === 0, problems };
 }
 
 /**
- * 运行时环境 —— 与 index.html 渲染循环保持同源。
+ * 运行时环境 —— 与 js/renderer.js 的渲染循环保持同源。
  *
  * 校验「能不能跑」时，喂给 shader 的 uniform 必须和页面一致，否则结论不可信：
  * rain 依赖 iChannel0 的背景图，不绑纹理就会渲染成纯黑，被误判成坏 shader。
@@ -103,7 +111,7 @@ function verifyAgainstIndexHtml() {
  */
 const DEFAULT_TEXTURE = {
     width: 2, height: 2,
-    // index.html createDefaultTexture()：2x2 棋盘格，白/灰
+    // js/renderer.js createDefaultTexture()：2x2 棋盘格，白/灰
     data: [
         255, 255, 255, 255, 128, 128, 128, 255,
         128, 128, 128, 255, 255, 255, 255, 255,
@@ -117,7 +125,7 @@ const UNIFORM_DEFAULTS = {
     timeDelta: 1 / 60,
     sampleRate: 44100,
     // iMouse / iDate 页面里随交互变化，校验时给一组中性值。
-    // iMouse.zw 必须是 -1，与 index.html 的 mouse = {x:0,y:0,bx:-1,by:-1} 同源：
+    // iMouse.zw 必须是 -1，与 js/renderer.js 的 mouse = {x:0,y:0,bx:-1,by:-1} 同源：
     // ShaderToy 用 iMouse.z > 0.0 判断「是否按住」，页面未点击过传的就是负值。
     // 校验器若传 0，那些用 iMouse.z < 0.0 判「从未交互」的 shader 会走错分支。
     mouse: [0, 0, -1, -1],
@@ -125,8 +133,8 @@ const UNIFORM_DEFAULTS = {
 };
 
 module.exports = {
-    INDEX_HTML, FRAG_TEMPLATE, VERT_TEMPLATE,
+    RUNTIME_SRC, FRAG_TEMPLATE, VERT_TEMPLATE,
     DEFAULT_TEXTURE, UNIFORM_DEFAULTS,
     wrapFragment, fragmentLineOffset,
-    readIndexTemplates, verifyAgainstIndexHtml, sha1
+    readRuntimeTemplates, verifyAgainstRuntime, sha1
 };

@@ -5,10 +5,12 @@
  *   node scripts/gen-shader-manifest.js           # 生成 / 刷新清单
  *   node scripts/gen-shader-manifest.js --check   # 校验（CI 用，过期退出码 1）
  *
- * --check 会同时校验三件事：
- *   1. manifest.js 与 shader/ 目录内容一致
- *   2. 每个 shader 文件的 path / label 写对了
+ * --check 会同时校验四件事：
+ *   1. manifest.js 与 shader/ 目录内容一致，且是新格式（旧格式的 label 是现算的，
+ *      比什么都能过 —— 放过去就是假绿）
+ *   2. 每个 shader 文件的 path / label 写对了，且与 manifest 记录一致
  *   3. 已发布草稿没有「改了但忘了重新 release」（委托给 release-shader.js --check）
+ *   4. GLSL 运行校验（委托给 check-glsl.js）
  *
  * 零依赖，任何 Node 版本都能跑。
  */
@@ -38,6 +40,23 @@ function lint(paths) {
         }
         if (!/label\s*:\s*'((?:[^'\\]|\\.)*)'/.test(src)) problems.push(`${rel}: 缺少 label 字段`);
     }
+
+    // label 已从产物搬进清单，于是多出一种新的过期方式：手工改了 .shader.js 的
+    // label 却没重跑 add:refresh → 下拉列表显示旧名字。改动产物本身是人类的合法
+    // 操作，所以这里只报错提醒，绝不自动改写任何一边。
+    // 只有在清单本身就是新格式时这条比对才有意义：旧格式的 label 是拿产物现算的，
+    // 跟产物比必然相等，比了也是白比（那种情况由 main() 单独报错）。
+    const manifest = L.readManifest();
+    if (manifest.format === 'entries') {
+        const byPath = new Map(manifest.entries.map(e => [e.path, e.label]));
+        for (const rel of paths) {
+            if (!byPath.has(rel)) continue;          // 整条缺失由 --check 分支单独报
+            const want = L.manifestEntry(rel).label;
+            if (byPath.get(rel) !== want) {
+                problems.push(`shader/manifest.js: '${rel}' 的 label 记的是 '${byPath.get(rel)}'，现应为 '${want}' —— 请运行 npm run add:refresh`);
+            }
+        }
+    }
     return problems;
 }
 
@@ -46,7 +65,19 @@ function main() {
 
     if (checkOnly) {
         let bad = false;
-        const current = L.readManifestPaths();
+        const manifest = L.readManifest();
+        const current = manifest.format === 'missing' ? null : manifest.entries.map(e => e.path);
+        if (manifest.format === 'paths') {
+            // 旧格式（纯路径数组）的 label 是拿产物现算的，所以上面每条校验都会
+            // 恰好通过 —— 不在这里拦一道，一个没刷新的清单能让 CI 全绿，
+            // 而页面上的下拉却显示退化后的文件名。
+            console.error('✗ shader/manifest.js 是旧格式（纯路径数组）：label 会退化成文件名，'
+                + '且「清单未刷新」无法被检出。请运行: npm run add:refresh');
+            bad = true;
+        } else if (manifest.format === 'empty') {
+            console.error('✗ shader/manifest.js 解析不出任何条目，请运行: npm run add:refresh');
+            bad = true;
+        }
         if (current === null) {
             console.error('✗ shader/manifest.js 不存在，请运行: npm run add:refresh');
             bad = true;

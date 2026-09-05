@@ -314,11 +314,11 @@ async function selfTest() {
 
 async function main() {
     // 包装器漂移会让「通过」变成假阳性，先自查
-    const drift = W.verifyAgainstIndexHtml();
+    const drift = W.verifyAgainstRuntime();
     if (!drift.ok) {
         process.stderr.write('✗ GLSL 包装器已漂移，校验结果不可信：\n');
         drift.problems.forEach(p => process.stderr.write('  ' + p + '\n'));
-        process.stderr.write('  请让 scripts/lib/glsl-wrap.js 与 index.html 重新一致。\n');
+        process.stderr.write('  请让 scripts/lib/glsl-wrap.js 与 js/renderer.js 重新一致。\n');
         process.exit(1);
     }
 
