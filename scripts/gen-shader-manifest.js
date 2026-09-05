@@ -48,10 +48,10 @@ function main() {
         let bad = false;
         const current = L.readManifestPaths();
         if (current === null) {
-            console.error('✗ shader/manifest.js 不存在，请运行: npm run release -- --refresh');
+            console.error('✗ shader/manifest.js 不存在，请运行: npm run add:refresh');
             bad = true;
         } else if (current.join('\n') !== paths.join('\n')) {
-            console.error('✗ shader/manifest.js 已过期，请运行: npm run release -- --refresh\n');
+            console.error('✗ shader/manifest.js 已过期，请运行: npm run add:refresh\n');
             const cur = new Set(current), want = new Set(paths);
             paths.filter(p => !cur.has(p)).forEach(p => console.error('  缺少: ' + p));
             current.filter(p => !want.has(p)).forEach(p => console.error('  多余: ' + p));

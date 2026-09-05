@@ -2,12 +2,21 @@
   "name": "shadertoy-runner",
   "private": true,
   "scripts": {
+    "add": "node scripts/release-shader.js",
+    "add:all": "node scripts/release-shader.js --all",
+    "add:check": "node scripts/release-shader.js --check",
+    "add:refresh": "node scripts/release-shader.js --refresh",
+    "status": "node scripts/release-shader.js --status",
+    "check": "node scripts/gen-shader-manifest.js --check",
+    "remove": "node scripts/remove-shader.js",
+    "rm": "node scripts/remove-shader.js",
+    "drafts:extract": "node scripts/extract-shader.js",
+
     "release": "node scripts/release-shader.js",
     "release:status": "node scripts/release-shader.js --status",
     "release:all": "node scripts/release-shader.js --all",
     "release:refresh": "node scripts/release-shader.js --refresh",
     "release:check": "node scripts/release-shader.js --check",
-    "drafts:extract": "node scripts/extract-shader.js",
     "shaders:check": "node scripts/gen-shader-manifest.js --check"
   },
   "dependencies": {

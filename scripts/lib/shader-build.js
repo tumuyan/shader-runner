@@ -87,9 +87,11 @@ function unescapeTemplate(s) {
 
 /** 渲染产物文件。格式固定，extract 依赖它反解。 */
 function renderShaderFile(opts) {
+    const short = String(opts.src).replace(/^.*\//, '').replace(GLSL_RE, '');
     return `// 自动生成，请勿手工编辑。
 // 源草稿: ${opts.src} @ sha1:${opts.hash}
-// 重新生成: npm run release -- ${opts.src}
+// 重新生成: npm run add ${short}
+// 移除内置: npm run remove ${short}
 (function(w){
     var d = (w.__SHADER_REGISTRY__ = w.__SHADER_REGISTRY__ || []);
     d.push({
@@ -125,25 +127,89 @@ function parseShaderFile(text) {
     };
 }
 
+/** 读单个草稿文件（含 `_` 开头的模板 —— 显式指定时允许） */
+function readDraftFile(file) {
+    const raw = fs.readFileSync(abs(file), 'utf8');
+    const fm = parseFrontmatter(raw);
+    const base = file.replace(/^.*\//, '').replace(GLSL_RE, '');
+    return {
+        file,
+        name: fm.meta.name || base,
+        label: fm.meta.label || titleCase(base),
+        code: normalizeGlsl(fm.body),   // frontmatter 是元数据，不计入 shader 代码
+        meta: fm.meta
+    };
+}
+
 /** 列出草稿（以 `_` 开头的是模板，不参与自动处理） */
 function listDrafts(includeTemplates) {
     if (!fs.existsSync(DRAFTS_DIR)) return [];
     return fs.readdirSync(DRAFTS_DIR)
         .filter(n => GLSL_RE.test(n) && (includeTemplates || !n.startsWith('_')))
         .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
-        .map(n => {
-            const file = 'drafts/' + n;
-            const raw = fs.readFileSync(abs(file), 'utf8');
-            const fm = parseFrontmatter(raw);
-            const base = n.replace(GLSL_RE, '');
-            return {
-                file,
-                name: fm.meta.name || base,
-                label: fm.meta.label || titleCase(base),
-                code: normalizeGlsl(fm.body),   // frontmatter 是元数据，不计入 shader 代码
-                meta: fm.meta
-            };
-        });
+        .map(n => readDraftFile('drafts/' + n));
+}
+
+/**
+ * 命令行输入 → 短名。以下写法全部等价：
+ *   underwater | underwater.glsl | drafts/underwater.glsl | ./drafts/underwater.glsl
+ *   underwater.shader.js | shader/underwater.shader.js
+ * 只剥「目录前缀 + 扩展名」，不做任何模糊匹配。
+ */
+const INPUT_EXT_RE = /\.(glsl|frag|vert|txt|shader\.js|js)$/;
+function normalizeInput(input) {
+    return String(input).trim().replace(/\\/g, '/')
+        .replace(/^\.\//, '')
+        .replace(/^(?:drafts|shader)\//, '')
+        .replace(INPUT_EXT_RE, '');
+}
+
+/**
+ * 短名 → 草稿文件。
+ *
+ * 只做精确匹配，绝不做前缀补全：`shattered-space` 与 `shattered-space-v11`
+ * 必须靠用户多敲几个字符来区分 —— 猜错一次的代价（发错 shader）远高于多敲几个字符。
+ * 找不到时给出 suggestions，让报错能直接指导下一步。
+ *
+ * 返回 { name, file, via } | { name, file: null, suggestions, ambiguous? }
+ */
+function resolveDraftInput(input, includeTemplates) {
+    const name = normalizeInput(input);
+    const base = name.replace(/^.*\//, '');
+    if (!base) return { name, file: null, suggestions: [] };
+
+    const candidates = name.includes('/')
+        ? [name + '.glsl', 'drafts/' + name + '.glsl']
+        : ['drafts/' + name + '.glsl'];
+    for (const c of candidates) {
+        if (fs.existsSync(abs(c))) return { name: base, file: c, via: 'path' };
+    }
+
+    // 草稿文件名可以和产物名不同（frontmatter @name: xxx），再按解析出的 name 找一遍
+    const drafts = listDrafts(!!includeTemplates);
+    const byName = drafts.filter(d => d.name === base);
+    if (byName.length === 1) return { name: base, file: byName[0].file, via: 'name' };
+    if (byName.length > 1) {
+        return { name: base, file: null, suggestions: byName.map(d => d.file), ambiguous: true };
+    }
+
+    const pool = new Set([
+        ...drafts.map(d => d.name),
+        ...drafts.map(d => d.file.replace(/^.*\//, '').replace(GLSL_RE, '')),
+        ...listShaders().map(p => p.replace(/^.*\//, '').replace(SHADER_RE, ''))
+    ]);
+    pool.delete(base);
+    const suggestions = [...pool]
+        .filter(n => n.toLowerCase().includes(base.toLowerCase()))
+        .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    return { name: base, file: null, suggestions };
+}
+
+/** 找不到草稿时的一句可操作报错 */
+function notFoundMessage(input, r) {
+    if (r.ambiguous) return `短名 ${r.name} 对应多个草稿，请写完整路径：\n  ` + r.suggestions.join('\n  ');
+    const hint = r.suggestions.length ? `\n  是不是想找: ${r.suggestions.join(', ')}` : '';
+    return `找不到草稿: ${input}（应有 drafts/${r.name}.glsl）${hint}`;
 }
 
 /** 列出已发布产物（manifest.js 除外） */
@@ -241,6 +307,7 @@ module.exports = {
     ROOT, DRAFTS_DIR, SHADER_DIR, MANIFEST_FILE, GLSL_RE, SHADER_RE,
     rel, abs, sha1, normalizeGlsl, parseFrontmatter, titleCase,
     escapeTemplate, unescapeTemplate, renderShaderFile, parseShaderFile,
-    listDrafts, listShaders, draftState, collectStatus,
+    listDrafts, readDraftFile, listShaders, draftState, collectStatus,
+    normalizeInput, resolveDraftInput, notFoundMessage,
     renderManifest, generateManifest, readManifestPaths
 };

@@ -1318,7 +1318,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         // ============================================================
         // 内置 shader — 通过动态 <script> 加载 .shader.js 文件（不受 CORS 限制）
-        // 文件清单由 shader/manifest.js 提供，该文件由 `npm run release -- --refresh` 扫描
+        // 文件清单由 shader/manifest.js 提供，该文件由 `npm run add:refresh` 扫描
         // shader/*.shader.js 自动生成；新增 shader 只需丢文件 + 重跑命令，无需改这里。
         // ============================================================
         const BUILTIN_SHADERS = [];      // 由 loadShaderScripts 填充
@@ -1366,7 +1366,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             var manifest = await loadShaderManifest();
             if (!manifest) {
                 console.warn('⚠ ' + SHADER_MANIFEST_PATH + ' 缺失，未加载任何内置 shader');
-                showToast('⚠ shader/manifest.js 缺失，请运行 npm run release -- --refresh');
+                showToast('⚠ shader/manifest.js 缺失，请运行 npm run add:refresh');
                 return;
             }
             await Promise.all(manifest.map(injectScript));

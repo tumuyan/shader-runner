@@ -3,10 +3,12 @@
 /**
  * 把草稿 GLSL 组装成 shader/*.shader.js 并刷新 manifest。
  *
- *   node scripts/release-shader.js drafts/x.glsl [--label "名"] [--name 产物名] [--dry-run] [--force] [--json]
- *   node scripts/release-shader.js --status [--json]     # 只读：列出草稿三态
- *   node scripts/release-shader.js --all [--dry-run]     # 仅重组装「已发布过」的草稿，绝不新增发布
- *   node scripts/release-shader.js --check               # 有「草稿已改但未重新 release」则退出码 1
+ *   npm run add underwater            # 短名 / underwater.glsl / drafts/underwater.glsl 都行
+ *   npm run add -- x --label "名"     # 覆盖显示名
+ *   npm run add:all                   # 仅重组装「已发布过」的草稿，绝不新增发布
+ *   npm run status                    # 只读：列出草稿六态
+ *   npm run add:check                 # 有「草稿已改但未重新 add」则退出码 1（npm run check 的一步）
+ *   npm run add:refresh               # 只重建 manifest
  *
  * 面向 AI 调用：零交互、幂等（内容不变则产物字节不变）、失败给一句可操作原因。
  * 绝不会在未经显式调用时发布任何东西 —— 没有任何 hook 会自动跑这个脚本。
@@ -22,14 +24,11 @@ argv.forEach((a, i) => {
 });
 const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && /^--(label|name)$/.test(argv[i - 1])));
 
-/** 读取单个草稿文件（含 `_` 开头的模板，显式指定时允许） */
-function readDraft(file) {
-    if (!L.GLSL_RE.test(file)) fail(`不是 .glsl 文件: ${file}`);
-    if (!fs.existsSync(L.abs(file))) fail(`草稿不存在: ${file}`);
-    const raw = fs.readFileSync(L.abs(file), 'utf8');
-    const fm = L.parseFrontmatter(raw);
-    const base = file.replace(/^.*\//, '').replace(L.GLSL_RE, '');
-    return { file, name: fm.meta.name || base, label: fm.meta.label || L.titleCase(base), code: L.normalizeGlsl(fm.body), meta: fm.meta };
+/** 读取草稿：接受短名 / 完整路径 / 产物路径，统一经 resolveDraftInput 归一 */
+function readDraft(input) {
+    const r = L.resolveDraftInput(input, true);   // 显式指定时允许 `_` 模板
+    if (!r.file) fail(L.notFoundMessage(input, r));
+    return L.readDraftFile(r.file);
 }
 
 function fail(msg) {
@@ -72,7 +71,7 @@ function releaseOne(draft, o) {
                     ...result, action: 'blocked',
                     reason: `${target} 含手工改动（产物已不是生成的样子）\n`
                         + `  保留手工改动: npm run drafts:extract -- ${target} --force   # 导回草稿，然后 release\n`
-                        + `  丢弃手工改动: npm run release -- ${draft.file} --force     # 用草稿覆盖`
+                        + `  丢弃手工改动: npm run add -- ${draft.file} --force          # 用草稿覆盖`
                 };
             } else {
                 result.action = 'update';   // 草稿是权威（产物没被改过，或已 --force）
@@ -104,8 +103,8 @@ function showStatus(json) {
         }[d.state];
         let note = '';
         if (d.state === 'unreleased') note = `→ 将新增 ${d.target}`;
-        if (d.state === 'foreign') note = `→ ${d.target} 非本工具生成，release 需 --force`;
-        if (d.state === 'draft-stale') note = `→ ${d.target}（运行 release 更新）`;
+        if (d.state === 'foreign') note = `→ ${d.target} 非本工具生成，add 需 --force`;
+        if (d.state === 'draft-stale') note = `→ ${d.target}（运行 npm run add ${d.name} 更新）`;
         if (d.state === 'product-edited') note = `→ ${d.target} 含手工改动，extract 导回或 --force 覆盖`;
         if (d.state === 'conflict') note = `→ 草稿与产物都改过，需人工合并`;
         console.log(`${tag}  ${d.file.padEnd(34)}${note}`);
@@ -131,9 +130,9 @@ function main() {
         const conflict = st.drafts.filter(d => d.state === 'conflict');
 
         if (stale.length) {
-            console.error(`✗ 有 ${stale.length} 个草稿改动后未重新 release：`);
+            console.error(`✗ 有 ${stale.length} 个草稿改动后未重新 add：`);
             stale.forEach(d => console.error(`  ${d.file} → ${d.target}`));
-            console.error('\n运行: npm run release --all   或   npm run release -- <草稿>');
+            console.error('\n运行: npm run add:all   或   npm run add -- <草稿>');
             process.exit(1);
         }
         if (conflict.length) {
@@ -174,13 +173,13 @@ function main() {
     }
 
     // ---- 无参数：默认显示状态。必须是只读的默认动作 —— 绝不是写操作，
-    // 否则 npm 吞掉 flag 时（npm run release --status）就会意外改动文件。
+    // 否则 npm 吞掉 flag 时（npm run add:all 写成 npm run add --all）就会意外改动文件。
     if (!positional.length) {
         showStatus(flags.has('--json'));
         if (!flags.has('--json')) {
-            console.log('\n用法: npm run release -- drafts/x.glsl [--label "名称"] [--name 产物名]');
-            console.log('      npm run release -- --all | --refresh | --check');
-            console.log('（注意 -- 分隔符：npm run release --status 会把 flag 吃掉，等价于不带参数）');
+            console.log('\n用法: npm run add <短名|drafts/x.glsl> [--label "名称"] [--name 产物名]');
+            console.log('      npm run add:all | add:check | add:refresh | status | check | remove');
+            console.log('（出现 flag 时必须加 -- 分隔符：npm run add -- x --label "名称"）');
         }
         return;
     }

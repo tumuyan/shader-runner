@@ -7,14 +7,18 @@ Guidance for AI assistants working in this repo. A single-page WebGL2 GLSL runne
 | Command | Purpose |
 |---|---|
 | `npx serve .` | Run locally. `file://` renders fine but **disables the clipboard API**, so share buttons silently fail — use HTTP to test sharing. |
-| `npm run release` | No args = **show status (read-only)** |
-| `npm run release drafts/x.glsl` | Release a draft → writes `shader/x.shader.js` + refreshes manifest. Multiple drafts OK. |
-| `npm run release:status` | Show draft states |
-| `npm run release:all` | Re-assemble drafts that are already released (never adds new) |
-| `npm run release:refresh` | Rebuild manifest only — needed only after hand-adding/-removing files in `shader/` |
-| `npm run release:check` | Exit 1 if a draft changed without re-releasing |
+| `npm run add <name>` | Add a draft → writes `shader/x.shader.js` + refreshes manifest. Multiple names OK. |
+| `npm run add:all` | Re-assemble drafts that are already added (never adds new) |
+| `npm run add:check` | Exit 1 if a draft changed without re-adding (one step of `check`) |
+| `npm run add:refresh` | Rebuild manifest only — needed only after hand-adding/-removing files in `shader/` |
+| `npm run status` | Show draft states (`npm run add` with no args does the same — read-only) |
+| `npm run remove <name>` | Remove a builtin: deletes `shader/x.shader.js` + refreshes manifest. **Never touches `drafts/`** |
 | `npm run drafts:extract -- shader/x.js` | Reverse a product back into an editable `drafts/x.glsl` |
-| `npm run shaders:check` | **Superset** check: manifest sync + field lint + draft sync. Use in CI. |
+| `npm run check` | **Superset** check: manifest sync + field lint + draft sync. Use in CI. `shaders:check` is a legacy alias. |
+
+`<name>` is flexible — `underwater`, `underwater.glsl`, `drafts/underwater.glsl`,
+`shader/underwater.shader.js` all resolve to the same thing (exact match only, never prefix-guessed).
+The old `release` / `release:*` names still exist as silent aliases of `add` / `add:*`.
 
 ## Commit rules
 
@@ -30,31 +34,36 @@ Guidance for AI assistants working in this repo. A single-page WebGL2 GLSL runne
 **Any flag requires `--` after the script name** — otherwise npm swallows it with **no error**:
 
 ```bash
-npm run release drafts/a.glsl              # ✓ positional only — no separator
-npm run release:all                        # ✓ sub-command — no separator
-npm run release -- drafts/a.glsl --label X # ✓ flag present
-npm run release drafts/a.glsl --label X    # ✗ "X" parsed as a filename
+npm run add a                              # ✓ positional only — no separator
+npm run add:all                            # ✓ sub-command — no separator
+npm run add -- a --label X                 # ✓ flag present
+npm run add a --label X                    # ✗ "X" parsed as a filename
 npm run drafts:extract shader/x.js --force # ✗ runs WITHOUT --force
 ```
 
-A flag is swallowed even after a filename. `release` with no args is deliberately read-only, so a missing separator wastes a command rather than causing a write.
+A flag is swallowed even after a filename. Prefer the flag-free sub-commands (`add:all`, `add:check`,
+`add:refresh`, `status`, `check`) — they can't be swallowed. `add` with no args is deliberately read-only, so a
+missing separator wastes a command rather than causing a write. `remove` is the one command where a
+swallowed `--force` is harmless: it just refuses and prints the full command to re-run.
 
 ## Shader rules for AI
 
 **One-directional constraint: AI goes GLSL → JS; humans may hand-edit the JS.** The tooling detects and protects manual edits.
 
-| State | Meaning | `release` | `--check` |
-|---|---|---|---|
-| `unreleased` | no product yet | creates | ok |
-| `synced` | both unchanged | no-op | ok |
-| `foreign` | product not from this tool | refuses (needs `--force`) | ok |
-| `draft-stale` | only draft changed | updates | **exit 1** |
-| `product-edited` | only product hand-edited | **refuses** | warn |
-| `conflict` | both changed | **refuses** | **exit 1** |
+| State | Meaning | `add` | `remove` | `--check` |
+|---|---|---|---|---|
+| `unreleased` | no product yet | creates | no-op (warn) | ok |
+| `synced` | both unchanged | no-op | deletes | ok |
+| `foreign` | product not from this tool | refuses (needs `--force`) | refuses (needs `--force`) | ok |
+| `draft-stale` | only draft changed | updates | deletes (draft keeps the new code) | **exit 1** |
+| `product-edited` | only product hand-edited | **refuses** | refuses (needs `--force`) | warn |
+| `conflict` | both changed | **refuses** | refuses (needs `--force`) | **exit 1** |
 
-Three hashes (`draftHash` / `recordedHash` / `actualHash`) tell which side moved, so a human tuning a shader never trips CI and `release` never silently clobbers it.
+Three hashes (`draftHash` / `recordedHash` / `actualHash`) tell which side moved, so a human tuning a shader never trips CI and `add` never silently clobbers it.
 
-- Change a shader by editing `drafts/*.glsl`, then releasing. Never hand-edit `shader/*.shader.js`.
+- Change a shader by editing `drafts/*.glsl`, then `npm run add <name>`. Never hand-edit `shader/*.shader.js`.
+- `remove` deletes only the product — `drafts/*.glsl` is uncommitted hand work and is never touched. After removal the draft shows as `unreleased` again, so `add` brings it back byte-for-byte.
+- All three blocked `remove` cases (foreign / no draft / hand-edited product) print the exact escape hatch, including the `--` separator.
 - On `product-edited` or `conflict`: **stop and ask the user** — only they can decide which side wins.
 - Never use `--force` to bypass a block without approval.
 - Exit code is trustworthy: if any draft is blocked the run exits 1, even if others succeeded.
@@ -63,7 +72,7 @@ Recovering a manual edit:
 
 ```bash
 npm run drafts:extract -- shader/x.shader.js --force   # pull edit back into the draft
-npm run release drafts/x.glsl                          # refresh fingerprint (no --force)
+npm run add x                                          # refresh fingerprint (no --force)
 ```
 
 ## Architecture
@@ -75,9 +84,10 @@ npm run release drafts/x.glsl                          # refresh fingerprint (no
 **Pipeline**:
 
 ```
-drafts/x.glsl ──release──▶ shader/x.shader.js ──▶ shader/manifest.js  (auto-refreshed)
-      ▲                            │
-      └────────drafts:extract──────┘
+drafts/x.glsl ──add──▶ shader/x.shader.js ──▶ shader/manifest.js  (auto-refreshed)
+      ▲                       │  ▲
+      │                       │  └── remove (deletes only the product)
+      └────drafts:extract─────┘
 ```
 
 - `drafts/*.glsl` — WIP, not committed. `_` prefix = template, skipped by `--status`/`--all`.
@@ -110,7 +120,8 @@ Only `label` and `name` are recognized; other `// @foo:` comments stay part of t
 │   └── *.shader.js         # GENERATED (AI: never hand-edit, humans may)
 ├── img/                    # README screenshots
 ├── scripts/
-│   ├── release-shader.js   # drafts → shader
+│   ├── release-shader.js   # drafts → shader   (npm run add)
+│   ├── remove-shader.js    # shader → 移除      (npm run remove)
 │   ├── extract-shader.js   # shader → drafts
 │   ├── gen-shader-manifest.js  # manifest generator + --check
 │   └── lib/shader-build.js # Shared: frontmatter, escaping, hashing
