@@ -2,7 +2,9 @@ name: Sync from CNB
 
 on:
   schedule:
-    - cron: '0 * * * *'   # 每小时运行一次
+    # 每 6 小时一次（02:17 / 08:17 / 14:17 / 20:17 CST）
+    - cron: '17 2,8,14,20 * * *'
+      timezone: 'Asia/Shanghai'
   workflow_dispatch:
     inputs:
       force_push:
