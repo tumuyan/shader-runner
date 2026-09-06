@@ -20,11 +20,13 @@
     "release:refresh": "node scripts/release-shader.js --refresh",
     "release:check": "node scripts/release-shader.js --check",
     "shaders:check": "node scripts/gen-shader-manifest.js --check",
-    "api:check": "node scripts/check-api.js"
+    "api:check": "node scripts/check-api.js",
+    "dev": "node scripts/dev-server.js",
+    "dev:vercel": "vercel dev -L -y",
+    "dev:netlify": "netlify dev"
   },
   "dependencies": {
-    "@netlify/blobs": "^8.0.0",
-    "vercel": "^54.20.0"
+    "@netlify/blobs": "^8.0.0"
   },
   "devDependencies": {
     "glslang-validator-prebuilt-predownloaded": "^0.0.2",

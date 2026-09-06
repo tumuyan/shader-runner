@@ -1,2 +1,4 @@
 node_modules/
 .Trash-0/
+.vercel/
+.netlify/

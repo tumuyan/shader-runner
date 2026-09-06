@@ -71,7 +71,8 @@ Node 会把它当 CJS 解析。校验脚本把入口连同 `shared/` 一起复�
 `import()` —— 顺便验证了「入口到共享模块的相对路径没写错」和「ESM 能默认导入 CJS」。
 
 **这验不到打包环节。** 两个平台都会把相对依赖打进产物（Vercel 用 esbuild/ncc，
-Netlify 用 zip-it-and-ship-it），这一步只有真机部署能证：`ntl dev` / `vercel dev` 各点一次「发布」。
+Netlify 用 zip-it-and-ship-it），这一步只有真机部署能证：`ntl dev` / `npx vercel dev -L -y` 各点一次「发布」。
+CLI 不必装进依赖（`npx` 临时下载即可），本地调试与部署说明见 [README 的「部署」节](../README.md#部署)。
 
 ## 总校验
 

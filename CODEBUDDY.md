@@ -6,7 +6,8 @@ Guidance for AI assistants working in this repo. A single-page WebGL2 GLSL runne
 
 | Command | Purpose |
 |---|---|
-| `npx serve .` | Run locally. `file://` renders fine but **disables the clipboard API**, so share buttons silently fail — use HTTP to test sharing. |
+| `npm run dev` | Run locally **with a working `/api/shader`** (static files + the real `api/shader.js` handler, in-memory store). Use this when testing publish — plain static servers have no API, so the probe fails and publish is greyed out. |
+| `npx serve .` | Static-only local run — fine for viewing, but `/api/shader` is absent and publish is unavailable. |
 | `npm run add <name>` | Add a draft → writes `shader/x.shader.js` + refreshes manifest. Multiple names OK. |
 | `npm run add:all` | Re-assemble drafts that are already added (never adds new) |
 | `npm run add:check` | Exit 1 if a draft changed without re-adding (one step of `check`) |
@@ -272,6 +273,7 @@ two order comments (file header list in `index.html` and the note in `README.md`
 ├── shader/                 # GENERATED — AI: never hand-edit (humans may edit *.shader.js)
 ├── img/                    # README screenshots
 ├── scripts/
+│   ├── dev-server.js      # 本地开发服务器：静态文件 + /api/shader（npm run dev，零依赖）
 │   ├── ci-setup.sh
 │   ├── check-api.js        # 服务端写入防护校验（并入 npm run check）
 │   ├── check-glsl.js       # GLSL 运行校验（check 的最后一关）

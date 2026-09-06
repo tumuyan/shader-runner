@@ -14,7 +14,8 @@
 
 ```bash
 open index.html    # 直接打开
-npx serve .        # 或走 HTTP
+npx serve .        # 或走 HTTP（只有静态文件，没有 /api/shader）
+npm run dev        # 连「发布」一起调：静态文件 + 本地 /api/shader（零依赖）
 ```
 
 ## 功能
@@ -69,12 +70,26 @@ git add shader/ && git commit            # 只提交产物，drafts/ 留在本�
 
 | 平台 | 说明 |
 |---|---|
-| **Netlify** | push 即部署，自动配置 Serverless Function 与 Blob Storage，支持「发布」。本地测试：`npm install && ntl dev` |
-| **Vercel** | 支持「发布」，存储默认在内存（重启丢失），可换 Vercel KV / Blob |
-| **任意静态托管**（GitHub Pages / Cloudflare Pages 等） | 上传 `index.html`、`css/`、`js/` 与 `shader/` 即可。没有 `/api/shader`，启动时探测不到接口会自动把「发布」按钮置灰并说明原因；「分享」不受影响 |
+| **Netlify** | push 即部署，自动配置 Serverless Function 与 Blob Storage，支持「发布」 |
+| **Vercel** | push 即部署，支持「发布」，存储默认在内存（重启丢失），可换 Vercel KV / Blob |
+| **任意静态托管**（GitHub Pages / Cloudflare Pages 等） | 上传 `index.html`、`css/`、`js/` 与 `shader/` 即可。没有 `/api/shader`，启动探测不到接口会自动把「发布」按钮置灰；「分享」不受影响 |
 
 **发布接口探测**：启动时发一次 `GET /api/shader`（不带 `id`，两个后端都返回 400 + JSON，零副作用），
 响应是 JSON 才认为后端存在 —— 只看状态码会被带 SPA fallback 的托管骗过（未知路径被重写成 `index.html` 返回 200 HTML）。
+
+### 本地调试与 vercel CLI
+
+页面本身是静态的，但「发布」依赖 `/api/shader`；用纯静态服务器（`npx serve .`）打开没有该接口 → 发布按钮置灰。
+
+```bash
+npm run dev              # 推荐：零依赖，静态文件 + 直接 import 线上那个 api/shader.js
+npx vercel dev -L -y     # 或真 CLI（-L 本地模式，无需登录），额外验证平台侧打包
+npm run dev:netlify      # 装了 netlify-cli 时用，连 Netlify 的 redirect 一起调
+```
+
+**vercel CLI 不是必需**：它只是命令行工具而非构建依赖，Vercel 云端自己装依赖、自己打包，所以已从依赖移除；部署、CI、`npm run check` 都不需要它。
+
+> `vercel dev` 每次请求可能起新的函数进程，而 Vercel 版是内存存储 → 可能出现「POST 返回了 id、紧接着 GET 却 404」。这是多实例下内存存储的预期行为，不是 bug；要验「存了能读出来」用 `npm run dev`（单进程），或把 `api/shader.js` 的 `store` 换成 Vercel KV / Blob。
 
 ### 服务端的写入限制
 
@@ -189,7 +204,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 │   └── _temple.glsl        # 模板（_ 开头，不参与扫描）
 ├── shader/                 # 产物 + 清单（自动生成，提交）
 ├── scripts/                # 加入 / 移除 / 导出 / 清单 / 校验工具（Node 侧，零运行时依赖）
-├── docs/                   # 分主题文档
+│   └── dev-server.js       # 本地开发服务器：静态文件 + /api/shader（npm run dev）
+├── docs/                   # 分主题文档（shader-workflow / checking / external-js）
 ├── shared/shader-api.js    # 服务端写入防护：体积 / ID / 限流 / 配额（两个后端共用）
 ├── api/shader.js           # Vercel Function
 └── netlify/functions/shader.js  # Netlify Function
