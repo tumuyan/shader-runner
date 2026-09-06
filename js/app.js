@@ -127,9 +127,15 @@ document.addEventListener('visibilitychange', () => {
         lastTime = n;
     }
     if (isPreview) return;
-    // 时间补偿统一由 render 每帧累加，此处只切换状态
-    if (document.hidden) { if (!paused) paused = true; }
-    else if (paused) { paused = false; }
+    // 时间补偿统一由 render 每帧累加，此处只切换状态。
+    // 回前台只解除「本函数自己造成的」那次暂停：用户手动按的暂停必须原样保留，
+    // 否则切个标签页回来动画就自己跑起来了，等于把用户的操作静默撤掉。
+    if (document.hidden) {
+        if (!paused) { paused = true; autoPausedByVisibility = true; }
+    } else if (autoPausedByVisibility) {
+        autoPausedByVisibility = false;
+        paused = false;
+    }
     playPauseBtn.textContent = paused ? '▶' : '⏸';
 });
 

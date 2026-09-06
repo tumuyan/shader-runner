@@ -334,6 +334,9 @@ canvas.addEventListener('touchend', releaseMouse, {passive:true});
 
 function togglePause() {
     autoPauseFired = true;  // 手动操作后自动暂停永久失效
+    // 用户亲手按过之后，暂停状态的归属就是他自己的：清掉可见性自动暂停的标记，
+    // 免得后面一次 visibilitychange 又把手动结果覆盖掉
+    autoPausedByVisibility = false;
     paused = !paused;
     // 时间补偿统一由 render 每帧累加，此处不再手工改写 pauseOffset
     playPauseBtn.textContent = paused ? '▶' : '⏸';

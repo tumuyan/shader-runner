@@ -18,6 +18,8 @@ let currentCode = '';       // 当前已应用（或待应用）的 shader 源�
 let paused = false;         // 是否暂停——render() 读，togglePause() / 可见性监听写
 let autoPauseMs = 0;        // 启动后经过多少毫秒自动暂停，0 = 不暂停（仅预览模式生效）
 let autoPauseFired = false; // 自动暂停已触发过；任何手动操作后置 true，使其永久失效
+let autoPausedByVisibility = false;  // 当前暂停是「切后台」自动造成的——回前台只恢复这一类，
+                                     // 否则用户手动暂停会被回前台这个动作静默解除（app.js 的 visibilitychange）
 let frameCap = 0;           // 帧率上限，0 = 不限
 
 let contextLost = false;      // WebGL 上下文是否丢失——renderer 置位，catalog.applyShader 读
