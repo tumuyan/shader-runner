@@ -204,6 +204,7 @@ body.preview-mode .settings-group { display: none; }
     color: #888;
     white-space: nowrap;
 }
+/* 输入框是「造预览链接用的参数」而非实时控件，预览模式下无需再显示 */
 body.preview-mode .pause-group { display: none; }
 
 /* 编辑器覆盖层 */

@@ -96,6 +96,8 @@ function fpsCapQuery() {
     const v = parseInt(fpsCapInput.value, 10);
     return v > 0 ? '&fpsCap=' + v : '';
 }
+// 与另两个限制参数不同：autoPauseMs 不实时作用于当前页，只经本函数序列化进生成的链接，
+// 由预览模式消费（renderer.js 的 isPreview 门控）。三条路径 share.js / buildServerUrl / buildSourceUrl 都走这里。
 function autoPauseQuery() {
     const v = parseInt(autoPauseInput.value, 10);
     return v > 0 ? '&autoPauseMs=' + v : '';

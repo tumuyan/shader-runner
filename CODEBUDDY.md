@@ -120,6 +120,15 @@ the first time a shader is needed (dropdown pick or `?src=`), then caches it in 
 `manifest.js` carries `label` because the product holding it isn't loaded yet. Editing a label in
 `shader/*.shader.js` therefore requires `npm run add:refresh` — `npm run check` fails if you forget.
 
+**Applying a shader**: every source (editor, dropdown, file, URL param) ends in `applyShader()` →
+`createProgram()`, which deletes the old `program` *before* compiling the new code. So a compile/link
+failure leaves `program === null` and `render()` skips drawing → **black canvas**. That is the intended
+"your edit did not apply" signal, not a bug: the failure path already keeps the editor open and shows
+an error toast, and the black frame is what remains once the editor closes. The alternative (compile
+into a temp program, swap only on success) would leave the previous shader animating after the editor
+closes, so a failed edit would look successful. Fully reversible — fixing the code and re-applying
+rebuilds the program; nothing deadlocks.
+
 **Pipeline**:
 
 ```
@@ -136,6 +145,14 @@ drafts/x.glsl ──add──▶ shader/x.shader.js ──▶ shader/manifest.js
 
 **URL params** (query + hash; hash parsed manually because `URLSearchParams` decodes `+` to space):
 `mode`, `code`, `id`, `src`, `js`, `maxSize`, `fpsCap`, `autoPauseMs`. Priority `code` > `id` > `src` > `js` > default.
+
+Of the three limit params, `maxSize` and `fpsCap` are **live controls** — they take effect on the
+current page as soon as they change. `autoPauseMs` is **not**: it is a link parameter. It is entered in
+edit mode, serialized by `autoPauseQuery()` into the generated preview links (`share.js`,
+`buildServerUrl`, `buildSourceUrl`), and consumed only under the `isPreview` gate in `renderer.js`.
+Two consequences that look contradictory but are both correct: it never fires in edit mode (so editing
+is never auto-interrupted), and `.pause-group` is hidden in preview mode, where the value is already
+baked into the URL. The user-facing wording is the input's `title` in `index.html`.
 
 `?js=<url>` loads a shader from any http(s) JS file pushing into `window.__SHADER_REGISTRY__` (same shape
 as a generated product). `validateJsUrl()` checks the **scheme only** (`http:`/`https:`) — hosts are

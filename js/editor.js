@@ -103,8 +103,15 @@ decodeBtn.addEventListener('click', () => {
         }
     }
 
-    // 尝试解码
-    const decoded = decodeShader(decodeURIComponent(extracted));
+    // 尝试解码。decodeURIComponent 对非法 % 序列（如 abc%zz）会抛 URIError，
+    // 必须包住，否则 handler 中断、连错误 toast 都弹不出。
+    let decoded;
+    try {
+        decoded = decodeShader(decodeURIComponent(extracted));
+    } catch (err) {
+        showToast('✗ 解码失败：链接格式非法（含非法 % 转义）');
+        return;
+    }
     if (decoded) {
         // currentSrc 与 currentJs 都要清：漏掉后者，解码出来的代码会被后面那次
         // syncUrlInput() 判成「仍来自外部 JS」，生成的还是 ?js= 短链 —— 用户刚

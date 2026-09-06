@@ -73,6 +73,9 @@ async function init() {
 
     textarea.value = shaderCode;
     currentCode = shaderCode;
+    // 启动也是一次「来源变化」，必须同步输入框：?src= / ?js= 分支设了 currentSrc /
+    // currentJs 却不同步的话，链接框是空的（要手点一次「分享」才填上），用户会以为坏了。
+    syncUrlInput();
     createProgram(shaderCode);
     resize();
     playPauseBtn.textContent = paused ? '▶' : '⏸';

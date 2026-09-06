@@ -86,8 +86,10 @@ function buildFragmentShader(userCode) {
 let program = null, uniforms = {};
 function createProgram(userCode) {
     if (gl.isContextLost()) return false;
+    // 失败即黑屏是有意为之：失败时编辑器不关 + 红 toast，错误可见；
+    // 不保留旧 program 到编译成功，否则关掉编辑器后会停在旧画面、让人误以为编辑成功。
     if (program) { gl.deleteProgram(program); program = null; }
-    // 先清空：链接失败时不能残留上一份 program 的 location，否则会用失效 location 上传 uniform
+    // 同时清空 location，避免失败时用失效 location 上传 uniform
     uniforms = {};
     const vs = compileShader(VERTEX_SHADER, gl.VERTEX_SHADER);
     const fs = compileShader(buildFragmentShader(userCode), gl.FRAGMENT_SHADER);
@@ -266,7 +268,8 @@ function render(time) {
     }
     const total = (now - startTime) - pauseOffset;
     frameCount++;
-    // 到达指定毫秒后自动暂停（仅预览模式，手动操作后永久失效）
+    // 到达指定毫秒后自动暂停（仅预览模式，手动操作后永久失效）。
+    // 带 isPreview 是刻意的：该参数服务于分享出去的预览链接，编辑模式要能无限时调代码。
     if (isPreview && autoPauseMs > 0 && !autoPauseFired) {
         const elapsed = (performance.now() / 1000 - startTime) * 1000;
         if (elapsed >= autoPauseMs) {

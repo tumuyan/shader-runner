@@ -26,12 +26,12 @@
             <span class="info-tag" id="fpsDisplay">0 FPS</span>
         </div>
         <div class="settings-group">
-            <input class="set-input" type="number" id="maxSizeInput" value="2560" min="0" max="8192" step="1" placeholder="2560p" title="渲染分辨率限制（像素），0 为不限">
+            <input class="set-input" type="number" id="maxSizeInput" value="0" min="0" max="8192" step="1" placeholder="0=不限" title="渲染分辨率限制（像素），0 为不限">
             <input class="set-input" type="number" id="fpsCapInput" value="0" min="0" max="360" step="1" placeholder="FPS" title="帧率上限（≤0 则不限制）">
         </div>
         <div class="pause-group">
             <label>自动暂停(毫秒)</label>
-            <input class="set-input" type="number" id="autoPauseInput" value="0" min="0" max="300000" step="100" placeholder="0" title="启动后经过指定毫秒自动暂停，0 为不暂停。手动操作后自动暂停失效">
+            <input class="set-input" type="number" id="autoPauseInput" value="0" min="0" max="300000" step="100" placeholder="0" title="启动后经过指定毫秒自动暂停，0 为不暂停。仅对复制/分享的预览链接生效，编辑模式不生效；手动操作后自动暂停失效">
         </div>
     </div>
 
