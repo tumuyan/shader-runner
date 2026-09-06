@@ -9,6 +9,11 @@
 // 启动：选择数据来源（优先级 code > id > src > js > 默认）
 // ============================================================
 async function init() {
+    // 静态托管没有 /api/shader —— 启动即探测，结论一回来就决定「发布」按钮是否置灰。
+    // 故意不 await：首屏不该为一个大概率用不上的结论等待（最坏等满 API_PROBE_TIMEOUT_MS）。
+    // 预览模式没有发布按钮，探测纯属浪费，只有 #id= 链接需要它的结论。
+    const apiProbe = (!isPreview || params.id) ? ensureApiProbe() : Promise.resolve(null);
+
     // 只读清单（通过 <script> 标签，不受 CORS 限制），shader 本体按需加载
     await loadShaderIndex();
     populateShaderDropdown();
@@ -19,18 +24,25 @@ async function init() {
         // 从 URL hash 解压
         shaderCode = decodeShader(params.code);
     } else if (params.id) {
-        // 从服务器获取
-        fetchLoader.classList.add('show');
-        try {
-            const res = await fetch(API_PATH + '?id=' + encodeURIComponent(params.id));
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            const data = await res.json();
-            shaderCode = data.code || '';
-        } catch (err) {
-            console.error('获取 shader 失败', err);
-            showToast('✗ 获取失败，使用默认 shader');
-        } finally {
-            fetchLoader.classList.remove('show');
+        // 从服务器获取。#id= 链接只有在后端存在时才有意义，所以先等探测结论：
+        // 不可用时直接说明原因，省掉那个注定拿到 HTML 404 页的请求
+        // （与 ?src= 先用清单校验存在性是同一个道理）。
+        await apiProbe;
+        if (apiAvailable === false) {
+            showToast('✗ 此链接需要服务器存储，但' + apiUnavailableReason);
+        } else {
+            fetchLoader.classList.add('show');
+            try {
+                const res = await fetch(API_PATH + '?id=' + encodeURIComponent(params.id));
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                shaderCode = data.code || '';
+            } catch (err) {
+                console.error('获取 shader 失败', err);
+                showToast('✗ 获取失败，使用默认 shader');
+            } finally {
+                fetchLoader.classList.remove('show');
+            }
         }
     } else if (params.src) {
         // 先拿清单校验存在性：不在清单里就不发那个注定 404 的请求

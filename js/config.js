@@ -27,5 +27,10 @@ const MAX_SIZE_DEFAULT = 0;         // 默认渲染分辨率上限（≤0 不限
 const FPS_CAP_DEFAULT = 0;          // 默认帧率上限（≤0 不限）—— catalog 初始化输入框
 
 const API_PATH = '/api/shader';     // 发布接口：Netlify 重写到 /.netlify/functions/shader，Vercel 由 api/shader.js 处理
+const API_PROBE_TIMEOUT_MS = 4000;  // 启动探测「发布接口是否存在」的超时（share.js 的 probeApiAvailability）
+// 单份 shader 的发布体积上限（字节）。必须与 shared/shader-api.js 的 LIMITS.MAX_CODE_BYTES
+// 一致 —— 只是前端预检，让用户立刻知道，而不是等传完几百 KB 才收到 400。
+// 服务端才是权威：改了那边忘了改这里，最坏是预检放过、服务端照拦（反之则是白跑一趟）。
+const MAX_UPLOAD_BYTES = 512 * 1024;
 const SHADER_MANIFEST_PATH = 'shader/manifest.js';  // 内置 shader 清单（npm run add:refresh 生成）
 const INDENT = '    ';              // 编辑器 Tab 缩进宽度——editor.js

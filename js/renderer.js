@@ -85,12 +85,16 @@ function buildFragmentShader(userCode) {
 
 let program = null, uniforms = {};
 function createProgram(userCode) {
+    // 上下文丢失不是代码的错，此时不清 lastCompiledCode —— 否则会拿一个跟代码无关的
+    // 环境问题去拦发布。
     if (gl.isContextLost()) return false;
     // 失败即黑屏是有意为之：失败时编辑器不关 + 红 toast，错误可见；
     // 不保留旧 program 到编译成功，否则关掉编辑器后会停在旧画面、让人误以为编辑成功。
     if (program) { gl.deleteProgram(program); program = null; }
     // 同时清空 location，避免失败时用失效 location 上传 uniform
     uniforms = {};
+    // 走到这里就是要对这份代码重新下结论了：下面任一步失败都保持为空。
+    lastCompiledCode = '';
     const vs = compileShader(VERTEX_SHADER, gl.VERTEX_SHADER);
     const fs = compileShader(buildFragmentShader(userCode), gl.FRAGMENT_SHADER);
     if (!vs || !fs) return false;
@@ -106,6 +110,7 @@ function createProgram(userCode) {
     const names = ['iResolution','iTime','iTimeDelta','iFrame','iMouse','iDate','iSampleRate','iChannel0','iChannel1','iChannel2','iChannel3'];
     names.forEach(n => uniforms[n] = gl.getUniformLocation(program, n));
     [0,1,2,3].forEach(i => gl.uniform1i(uniforms['iChannel'+i], i));
+    lastCompiledCode = userCode;   // 编译 + 链接都过了：这份代码确实能跑
     return true;
 }
 

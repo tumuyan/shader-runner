@@ -16,8 +16,8 @@
     <!-- 顶栏控件（仅编辑模式） -->
     <div class="top-bar">
         <div class="top-btn-row">
-            <button class="top-btn share-online" id="shareBtn">分享</button>
             <button class="top-btn share-online" id="shareServerBtn">发布</button>
+            <button class="top-btn share-online" id="shareBtn">分享</button>
             <button class="top-btn edit-btn" id="editBtn">编辑</button>
             <button class="top-btn icon-only" id="editHintBtn">?</button>
         </div>
@@ -49,8 +49,8 @@
             <select class="overlay-sel" id="shaderSelector"></select>
             <button class="overlay-btn btn-file" id="openFileBtn">📂</button>
             <button class="overlay-btn btn-apply" id="applyBtn">应用</button>
-            <button class="overlay-btn btn-share" id="shareUrlBtn">分享</button>
             <button class="overlay-btn btn-upload" id="uploadBtn">发布</button>
+            <button class="overlay-btn btn-share" id="shareUrlBtn">分享</button>
             <button class="overlay-btn btn-decode" id="decodeBtn">解码</button>
             <button class="overlay-btn btn-close" id="closeBtn">关闭</button>
             <button class="overlay-btn btn-default" id="defaultBtn">重置</button>
@@ -121,14 +121,22 @@
                     <tr>
                         <td><span class="badge badge-orange">依赖</span></td>
                         <td>无需服务器，离线可用</td>
-                        <td>需要部署后端函数</td>
+                        <td>需要部署后端函数（纯静态托管下该按钮会自动置灰）</td>
                     </tr>
                     <tr>
                         <td>适用场景</td>
                         <td>代码较短的 shader</td>
                         <td>复杂 shader 或 URL 过长时</td>
                     </tr>
+                    <tr>
+                        <td><span class="badge badge-orange">限制</span></td>
+                        <td>无（但 URL 过长会被截断）</td>
+                        <td>单份 ≤ 512 KB，同一 IP 10 分钟内 20 次<br>相同代码复用同一个链接，不重复占用存储<br>需先「应用」编译通过才能发布</td>
+                    </tr>
                 </table>
+                <p style="margin-top:8px;color:#999;font-size:12px;">
+                    「发布」超限时会自动改用「分享」，不会把代码弄丢。
+                </p>
             </div>
 
             <div class="help-section">

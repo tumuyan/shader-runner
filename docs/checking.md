@@ -53,18 +53,39 @@ npm run ci:setup -- --no-verify  # 只装不验
 
 仓库已带 `.github/workflows/check.yml`（push/PR 触发），含 Playwright 浏览器缓存。
 
+## 服务端写入防护校验
+
+```bash
+npm run api:check
+```
+
+验 `shared/shader-api.js` 的逻辑（体积 / ID / 存储内容校验、限流、ID 生成、内存配额），
+并**真的调用两个 handler**（`api/shader.js` 与 `netlify/functions/shader.js`）打一遍：
+超体积 → 400/413、连发第 21 次 → 429 且带 `Retry-After`、`../secret` 当 id → 400、坏数据 → 500。
+
+只测纯函数是不够的 —— 防护写得再对，接线时漏掉一次调用就等于没有（忘了调 `validateCode`、
+限流器建了没用）。所以断言打在 handler 的输出上。
+
+Vercel 侧是 ESM（`api/shader.js` 用 `export default`），而 `package.json` 没有 `"type":"module"`，
+Node 会把它当 CJS 解析。校验脚本把入口连同 `shared/` 一起复制到临时目录、改名为 `.mjs` 再
+`import()` —— 顺便验证了「入口到共享模块的相对路径没写错」和「ESM 能默认导入 CJS」。
+
+**这验不到打包环节。** 两个平台都会把相对依赖打进产物（Vercel 用 esbuild/ncc，
+Netlify 用 zip-it-and-ship-it），这一步只有真机部署能证：`ntl dev` / `vercel dev` 各点一次「发布」。
+
 ## 总校验
 
 ```bash
 npm run check
 ```
 
-是 `add:check` 的超集，按顺序验四件事：
+是 `add:check` 的超集，按顺序验五件事：
 
 1. `manifest.js` 与 `shader/` 目录内容一致，且是新格式
 2. 每个产物的 `path` / `label` 字段正确，且与 manifest 记录一致
 3. 草稿与产物同步（见 [shader-workflow.md](shader-workflow.md)）
-4. GLSL 运行校验（上面这一关）
+4. 服务端写入防护（`npm run api:check`，见下）
+5. GLSL 运行校验（上面这一关）
 
 任一项失败退出码 1。旧的 `npm run shaders:check` 保留为别名。
 

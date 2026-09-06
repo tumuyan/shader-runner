@@ -25,3 +25,14 @@ let frameCap = 0;           // 帧率上限，0 = 不限
 let contextLost = false;      // WebGL 上下文是否丢失——renderer 置位，catalog.applyShader 读
 let glResourcesReady = false; // VAO/VBO/默认纹理是否就位——renderer 置位，catalog.applyShader 读
 let glInitFailed = false;     // 启动期 GL 资源初始化失败；提示延后到 init()，因为那时才轮到 toast 声明
+
+// 发布接口（/api/shader）是否可用：null = 启动探测尚未返回，true/false = 已判定。
+// share.js 探测并写，app.js（?id= 分支）与 share.js（发布按钮）读 —— 静态托管没有后端，
+// 没有这个结论就只能让用户点了「发布」才知道。
+let apiAvailable = null;
+let apiUnavailableReason = '';   // 不可用时给人看的原因（一句短语，会拼进 toast 与 title）
+
+// 最近一次「编译 + 链接成功」的源码（renderer.js 的 createProgram 置位）。
+// 发布前拿它跟编辑器内容比对，避免把跑不起来的代码传上去 —— 服务端没有真编译器，
+// 拦不住这一类（见 shared/shader-api.js 顶部），所以这道关只能由浏览器来把。
+let lastCompiledCode = '';

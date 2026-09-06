@@ -309,6 +309,23 @@ body.preview-mode .pause-group { display: none; }
 .btn-default { background: #2a2a3a; color: #888; }
 .btn-default:hover { background: #3a3a4a; color: #aaa; }
 
+/* 发布接口不可用：置灰但保持可点（点了用 toast 讲原因）。
+   因此用 class 而非 disabled 属性 —— disabled 按钮既不派发 click 也不显示 title，
+   点下去「毫无反应」正是要治的病。 */
+.top-btn.is-disabled,
+.overlay-btn.is-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(0.85);
+}
+/* 压回 :hover 变体（多一个类选择器，优先级更高），否则置灰的按钮一 hover 又亮起来 */
+.overlay-btn.btn-upload.is-disabled:hover { background: #3a5a7a; color: #bcd; }
+.top-btn.share-online.is-disabled:hover {
+    background: rgba(70,130,220,0.12);
+    color: #6af;
+    border-color: rgba(70,130,220,0.3);
+}
+
 .hint {
     font-size: 12px;
     color: #777;

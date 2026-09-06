@@ -19,7 +19,8 @@
     "release:all": "node scripts/release-shader.js --all",
     "release:refresh": "node scripts/release-shader.js --refresh",
     "release:check": "node scripts/release-shader.js --check",
-    "shaders:check": "node scripts/gen-shader-manifest.js --check"
+    "shaders:check": "node scripts/gen-shader-manifest.js --check",
+    "api:check": "node scripts/check-api.js"
   },
   "dependencies": {
     "@netlify/blobs": "^8.0.0",

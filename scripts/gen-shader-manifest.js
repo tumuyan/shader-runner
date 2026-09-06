@@ -10,7 +10,8 @@
  *      比什么都能过 —— 放过去就是假绿）
  *   2. 每个 shader 文件的 path / label 写对了，且与 manifest 记录一致
  *   3. 已发布草稿没有「改了但忘了重新 release」（委托给 release-shader.js --check）
- *   4. GLSL 运行校验（委托给 check-glsl.js）
+ *   4. 服务端写入防护（委托给 check-api.js）
+ *   5. GLSL 运行校验（委托给 check-glsl.js）
  *
  * 零依赖，任何 Node 版本都能跑。
  */
@@ -100,6 +101,11 @@ function main() {
             const r = spawnSync(process.execPath, [path.join(__dirname, 'release-shader.js'), '--check'], { stdio: 'inherit' });
             if (r.status !== 0) bad = true;
         }
+
+        // /api/shader 的写入防护：体积上限 / ID 校验 / 限流 / 存储配额，两个后端都验。
+        // 放在 GLSL 校验前：它不需要浏览器，先跑可以先拿到一个便宜的红。
+        const a = spawnSync(process.execPath, [path.join(__dirname, 'check-api.js')], { stdio: 'inherit' });
+        if (a.status !== 0) bad = true;
 
         // 最后一关：GLSL 编译 + 链接校验。只校验 manifest 引用的 —— 没被引用的
         // 产物页面根本不会加载，让它把 CI 卡红没有意义。

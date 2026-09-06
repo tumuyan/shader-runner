@@ -15,6 +15,7 @@ Guidance for AI assistants working in this repo. A single-page WebGL2 GLSL runne
 | `npm run remove <name>` | Remove a builtin: deletes `shader/x.shader.js` + refreshes manifest. **Never touches `drafts/`** |
 | `npm run glsl:check` | GLSL 运行校验：真 WebGL2 编译 + 链接 + 渲染（传参需 `--`） |
 | `npm run draft:check` | 只校验 `drafts/*.glsl` |
+| `npm run api:check` | 服务端写入防护：体积 / ID / 限流 / 配额，两个 handler 都真跑一遍 |
 | `npm run ci:setup` | CI / 新机器环境准备（幂等，末尾自检）：依赖 + Chromium + 系统库 |
 | `npm run drafts:extract -- shader/x.js` | Reverse a product back into an editable `drafts/x.glsl` |
 | `npm run check` | **Superset** check: manifest sync + field lint + draft sync + GLSL compile. Use in CI. |
@@ -170,6 +171,61 @@ frames). The measured matrix behind these rules is in `docs/external-js.md`.
 **Serverless**: frontend always calls `/api/shader`. Netlify rewrites it to `/.netlify/functions/shader`
 (Blob Storage); on Vercel `api/shader.js` handles it (in-memory, volatile).
 
+**Publish-availability probe**: static hosting has no `/api/shader`, so `share.js` probes once at startup
+with `GET /api/shader` (no `id` → both backends answer 400 + JSON, zero side effects) and gates the two
+publish buttons (`uploadBtn`, `shareServerBtn`). **A JSON body is the only proof the backend exists** —
+status alone is not, because hosts with an SPA fallback rewrite unknown paths to `index.html` and return
+200 HTML. Gating uses `aria-disabled` + `.is-disabled`, **not** the `disabled` attribute: a disabled button
+fires no click and shows no title, which is exactly the silent failure being fixed. State lives in
+`apiAvailable` / `apiUnavailableReason` (state.js); `ensureApiProbe()` memoizes so startup, `?id=` loading
+and clicks share one request. With `?id=`, `init()` awaits the probe and skips the doomed fetch when the
+backend is absent.
+
+**Compile verification happens in the browser, not on the server.** `renderer.js` records
+`lastCompiledCode` (state.js) only on successful compile+link, and `share.js` refuses to publish code
+that differs from it — using the same ANGLE that will render it, so zero false verdicts. The server
+adds `validateGlslShape()`, which rejects **only what is guaranteed to fail in every implementation**
+(missing `mainImage`, own `#version`, redefining `void main()`, `script` tags); comments are stripped
+first so a comment reading `void main()` is not a false rejection. **Do not put a real compiler in the
+serverless request path.** No GPU there, and the only viable option (glslangValidator, 6.7 MB binary)
+rejects shaders that work: `70s-melt-color` compiles, links and renders fine in real WebGL2/ANGLE but
+glslang fails it. `BROWSER_DIVERGENT` in `scripts/lib/glsl-backend-glslang.js` exists for exactly this,
+and that list is empirical and necessarily incomplete — as a *blocking* gate, every uncatalogued
+divergence becomes "this user cannot publish and has no way to appeal". Cheap to absorb in CI, expensive
+for users. The browser gate is a UX guardrail (bypassable by direct POST), not a security control; the
+server shape check is the backstop. Both are needed.
+
+Two things to not do: never reject `precision` redeclaration (it is legal in ANGLE and `70s-melt-color`
+depends on it — `scripts/lib/glsl-wrap.js`'s header comment lumps it with wrapper conflicts, which is
+wrong), and never apply the write-side shape rules on the read path (they evolve; tightening them would
+turn historically valid records into "content corrupted", and reads are the only recovery path).
+
+**Write limits live in `shared/shader-api.js`** (CJS, because the Netlify function is CJS and Vercel's ESM
+entry can default-import CJS but not the reverse). Both `api/shader.js` and `netlify/functions/shader.js`
+must route every write and read through it — do not re-implement a check in either entry. Enforced there:
+512 KB code cap (UTF-8 **bytes**, not `String.length`), ~1 MB body cap, 20 POST / 10 min / IP and 1200 GET /
+10 min / IP sliding window, `crypto` IDs, a 5000-entry **and** 64 MB cap on the in-memory store (entries alone is not enough:
+5000 × 512 KB = 2.44 GiB, so the process OOMs long before it can return 503), and `validateStored()`
+on every read (storage is not trusted). **The write path must measure the same bytes the read path
+does** — go through `serialize()` on both sides. `MAX_STORED_BYTES` is 2× the code cap + 16 KB because
+JSON escaping can nearly double the bytes (every newline/quote/backslash becomes 2). Measuring code
+bytes on write and serialized bytes on read creates records that can be written but never read:
+GET returns 500 forever, and dedup silently degrades (unreadable content is treated as a collision, so
+every resubmit stores another full copy). `validateCode` checks size **before** shape, so a 600 KB
+payload reports "too large" rather than the misleading "missing mainImage".
+
+**Storage keys are content-addressed**: `contentKey(code)` = base62(sha256(code)) truncated to 8 chars,
+so identical code reuses one ID and duplicate submissions cost no extra storage. This is the real fix
+for storage exhaustion — it converts the attack from "cheap per request" to "expensive per distinct
+byte". The byte budget stays because the two are orthogonal. **Truncating to 8 chars keeps only 47.5
+bits, and a hash collision here is not benign** (unlike a random-ID collision, which `isTaken` catches
+and retries): treating a collision as "same content" hands the user a link to the wrong shader. So
+`assignId()` always **reads back and compares the content** — equal → dedupe; different → real
+collision, fall back to a random ID with retry. These are **speed bumps, not a wall**: serverless
+instances don't share counters, so the real ceiling is roughly `limit × live instances`, and on Vercel the IP
+comes from `x-forwarded-for`. Platform-level limits (Vercel Firewall / Netlify) are the real enforcement.
+`npm run api:check` exercises both handlers end to end.
+
 ## Frontend modules
 
 `js/` is loaded as **plain `<script src>` in a fixed order** — deliberately not ES modules:
@@ -212,7 +268,7 @@ two order comments (file header list in `index.html` and the note in `README.md`
 │   ├── codec.js            # lz 编解码 + 链接构建
 │   ├── renderer.js         # WebGL2（含 GLSL 包装器，改动要同步 scripts/lib/glsl-wrap.js）
 │   ├── catalog.js          # 内置清单 / ?js= 外部源 / 本地文件 / 应用 shader
-│   ├── share.js            # 分享 + 发布
+│   ├── share.js            # 分享 + 发布（含接口探测与体积预检）
 │   ├── editor.js           # 编辑器按键 + 链接解码
 │   └── app.js              # 启动编排 + 全局监听（最后加载）
 ├── drafts/                 # WIP GLSL — not committed, NOT gitignored
@@ -221,12 +277,14 @@ two order comments (file header list in `index.html` and the note in `README.md`
 ├── img/                    # README screenshots
 ├── scripts/
 │   ├── ci-setup.sh
+│   ├── check-api.js        # 服务端写入防护校验（并入 npm run check）
 │   ├── check-glsl.js       # GLSL 运行校验（check 的最后一关）
 │   ├── release-shader.js   # drafts → shader   (npm run add)
 │   ├── remove-shader.js    # shader → 移除      (npm run remove)
 │   ├── extract-shader.js   # shader → drafts
 │   ├── gen-shader-manifest.js  # manifest generator + --check
 │   └── lib/                # shader-build（共享解析/转义/哈希）, glsl-*（校验后端与包装器）
+├── shared/shader-api.js    # 服务端写入防护：体积 / ID / 限流 / 配额（两个后端共用）
 ├── api/shader.js           # Vercel function
 ├── netlify/functions/shader.js  # Netlify function
 └── netlify.toml, vercel.json, package.json
