@@ -340,6 +340,21 @@ canvas.addEventListener('touchmove', e => {
 }, {passive:true});
 canvas.addEventListener('touchend', releaseMouse, {passive:true});
 
+// #playPauseBtn 是覆盖在 canvas 上的兄弟节点（非子元素），事件不会冒泡过来，
+// 所以底部 80px 里 canvas 的监听全部收不到。转发 move，让 iMouse.xy 在这条里
+// 继续跟随 —— 否则鼠标扫到底部时 iMouse 停在旧值，iMouse 类 shader 看着像卡死。
+// 刻意不转发 down/up：那条是暂停控件，在那里按下的语义是暂停，不是 iMouse 按下。
+// 离开 canvas 进入该条时 canvas 的 mouseleave 已经把 down 释放掉了，无需再补。
+// touchend 同样不转发：touch 的 target 在 touchstart 时就锁定了，从 canvas 起手的
+// 手势即便滑到这条上抬起，touchend 仍派发给 canvas（341 行已释放）；反过来，手指
+// 直接按在这条上时 canvas 的 touchstart 从未触发、down 本就是 false —— 两种情况
+// releaseMouse 都是空转。而多指场景（canvas 上正拖着、另一根手指点这条）它反而会
+// 把还在进行的手势掐断，代价大于收益，故只补 move。
+playPauseBtn.addEventListener('mousemove', e => updateMousePos(e.clientX, e.clientY));
+playPauseBtn.addEventListener('touchmove', e => {
+    updateMousePos(e.touches[0].clientX, e.touches[0].clientY);
+}, {passive:true});
+
 function togglePause() {
     autoPauseFired = true;  // 手动操作后自动暂停永久失效
     // 用户亲手按过之后，暂停状态的归属就是他自己的：清掉可见性自动暂停的标记，

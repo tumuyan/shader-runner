@@ -42,6 +42,10 @@ body.preview-mode #fetchLoader {
     font-size: 32px;
 }
 #playPauseBtn:hover { opacity: 1; }
+/* 两种模式都保留。预览模式没键盘，这条是唯一的暂停入口；编辑模式保留是因为触屏同样
+   没有空格键，且 hover 时淡入的 ▶/⏸ 正好让它可被发现。
+   代价：底部 80px 不再属于 canvas。renderer.js 把 move 转发过去补回 iMouse.xy，
+   但「按下」（iMouse.z > 0）在那条里不可用 —— 那里点击的语义就是暂停。 */
 body #playPauseBtn { display: flex; }
 
 /* 加载提示（服务器获取时） */

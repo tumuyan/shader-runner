@@ -30,8 +30,8 @@
             <input class="set-input" type="number" id="fpsCapInput" value="0" min="0" max="360" step="1" placeholder="FPS" title="帧率上限（≤0 则不限制）">
         </div>
         <div class="pause-group">
-            <label>自动暂停(毫秒)</label>
-            <input class="set-input" type="number" id="autoPauseInput" value="0" min="0" max="300000" step="100" placeholder="0" title="启动后经过指定毫秒自动暂停，0 为不暂停。仅对复制/分享的预览链接生效，编辑模式不生效；手动操作后自动暂停失效">
+            <label>预览模式自动暂停(毫秒)</label>
+            <input class="set-input" type="number" id="autoPauseInput" value="0" min="0" max="300000" step="100" placeholder="0=不暂停" title="仅预览模式生效，编辑页不触发；手动暂停/播放后即失效">
         </div>
     </div>
 
@@ -81,19 +81,20 @@
             </div>
 
             <div class="help-section">
-                <h4>顶部按钮</h4>
+                <h4>顶部控件</h4>
                 <p>
                     <span class="badge badge-orange">✎ 编辑</span> 打开编辑器面板，编写或粘贴 GLSL 代码<br>
                     <span class="badge badge-green">🔗 分享</span> 将当前 shader 压缩至 URL，一键复制分享<br>
                     <span class="badge badge-blue">☁ 发布</span> 上传代码至服务器，生成固定短链接<br>
-                    <span class="badge badge-blue">分辨率/帧率</span> 限制渲染分辨率和帧率上限，0 为不限
+                    <span class="badge badge-blue">分辨率/帧率</span> 限制渲染分辨率和帧率上限，0 为不限<br>
+                    <span class="badge badge-blue">预览模式自动暂停</span> 链接打开后按毫秒自动暂停，0 为不暂停；当前编辑页不生效
                 </p>
             </div>
 
             <div class="help-section">
                 <h4>编辑器面板</h4>
                 <p>
-                    在下拉菜单中快速切换内置 shader，也可从本地 <kbd>.glsl</kbd> 文件加载。<br>
+                    在下拉菜单中快速切换内置 shader，点 <kbd>📂</kbd> 从本地 <kbd>.glsl</kbd> 文件加载。<br>
                     点击 <kbd>应用</kbd> 编译运行，<kbd>分享</kbd> 生成链接，<kbd>发布</kbd> 上传至服务器。<br>
                     <kbd>解码</kbd> 可还原分享链接中的代码，<kbd>重置</kbd> 恢复默认 shader。
                 </p>
@@ -143,7 +144,7 @@
                 <h4>页面模式</h4>
                 <p>
                     <span class="badge badge-orange">?mode=edit</span> 编辑模式（默认），显示所有控制按钮<br>
-                    <span class="badge badge-blue">?mode=preview</span> 预览模式，纯全屏渲染，无任何 UI
+                    <span class="badge badge-blue">?mode=preview</span> 预览模式，隐藏全部控件；底部任意处点击可暂停/继续
                 </p>
             </div>
 

@@ -20,7 +20,7 @@ npx serve .        # 或走 HTTP
 ## 功能
 
 - **编辑模式** — 粘贴 ShaderToy 的 `mainImage` GLSL 代码，实时编译运行
-- **预览模式** — 全屏渲染，无 UI 干扰
+- **预览模式** — 全屏渲染，无控件干扰（只有点击屏幕底部暂停/继续）
 - **内置 shader 选择器** — 下拉切换，即时生效（按需加载，首屏不下载任何 shader）
 - **本地文件打开** — 直接加载 `.glsl` / `.frag` 等文件
 - **本地压缩分享** — lz-string 把代码压进 URL hash，无需服务器存储
@@ -39,7 +39,7 @@ npx serve .        # 或走 HTTP
 | `js` | 外部 JS 里的 shader | `?js=https%3A%2F%2Fcdn.example.com%2Fmy.js` |
 | `maxSize` | 渲染分辨率最大边长（px），0=不限 | `?maxSize=720` |
 | `fpsCap` | 帧率上限，0=不限 | `?fpsCap=30` |
-| `autoPauseMs` | 仅预览模式：加载后按毫秒自动暂停 | `?autoPauseMs=3000` |
+| `autoPauseMs` | 仅预览模式：链接打开后按毫秒自动暂停，手动暂停后失效 | `?autoPauseMs=3000` |
 
 优先级：`code` > `id` > `src` > `js` > 默认 shader。
 

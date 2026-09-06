@@ -339,7 +339,13 @@ fileInput.addEventListener('change', async () => {
 });
 
 editBtn.addEventListener('click', toggleEditor);
-playPauseBtn.addEventListener('click', togglePause);
+playPauseBtn.addEventListener('click', () => {
+    // 点完必须摘掉焦点：按钮拿到焦点后，app.js 的 interactive 判断会把 E 让给它
+    // （编辑器就打不开了），Space 也会被浏览器当成「激活这个按钮」再触发一次暂停。
+    // 该按钮是透明浮层，留着焦点没有任何可见提示，纯副作用。
+    playPauseBtn.blur();
+    togglePause();
+});
 editHintBtn.addEventListener('click', openHelp);
 applyBtn.addEventListener('click', () => {
     if (currentSrc || currentJs) clearFileSource();

@@ -104,8 +104,7 @@ npm run add x                                          # refresh fingerprint (no
 
 **DOM**: `#glCanvas`, `#inputOverlay`, `#shaderCode` (textarea), `#shaderSelector` (dropdown),
 `#encodedUrlInput`, `#maxSizeInput`, `#fileInput`, `#toast`. Element IDs are discoverable in
-`index.html` — that is the authoritative list. They are all fetched once, in `js/ui.js`;
-other modules use those constants instead of calling `getElementById` again.
+`index.html` — that is the authoritative list, fetched once in `js/ui.js`.
 
 **Loading** (lazy — one shader at a time): `loadShaderIndex()` loads only `shader/manifest.js` →
 `window.__SHADER_MANIFEST__`, an array of `{ path, label }`. The dropdown renders from that index alone;
@@ -122,13 +121,11 @@ the first time a shader is needed (dropdown pick or `?src=`), then caches it in 
 `shader/*.shader.js` therefore requires `npm run add:refresh` — `npm run check` fails if you forget.
 
 **Applying a shader**: every source (editor, dropdown, file, URL param) ends in `applyShader()` →
-`createProgram()`, which deletes the old `program` *before* compiling the new code. So a compile/link
-failure leaves `program === null` and `render()` skips drawing → **black canvas**. That is the intended
-"your edit did not apply" signal, not a bug: the failure path already keeps the editor open and shows
-an error toast, and the black frame is what remains once the editor closes. The alternative (compile
-into a temp program, swap only on success) would leave the previous shader animating after the editor
-closes, so a failed edit would look successful. Fully reversible — fixing the code and re-applying
-rebuilds the program; nothing deadlocks.
+`createProgram()`, which deletes the old `program` *before* compiling. So a compile/link failure leaves
+`program === null`, `render()` skips drawing → **black canvas**. That is the intended "your edit did not
+apply" signal, not a bug — don't "fix" it by compiling into a temp program and swapping on success:
+that leaves the previous shader animating after the editor closes, so a failed edit looks successful.
+Fully reversible — fixing the code and re-applying rebuilds the program.
 
 **Pipeline**:
 
@@ -139,7 +136,7 @@ drafts/x.glsl ──add──▶ shader/x.shader.js ──▶ shader/manifest.js
       └────drafts:extract─────┘
 ```
 
-- `drafts/*.glsl` — WIP, not committed. `_` prefix = template, skipped by `--status`/`--all`.
+- `drafts/*.glsl` — `_` prefix = template, skipped by `--status`/`--all`.
   Optional frontmatter `// @label:` / `// @name:` (metadata, stripped before hashing, these two only).
 - `shader/*.shader.js` — generated, committed.
 - `shader/manifest.js` — generated, committed. Holds `{ path, label }` per shader.
@@ -153,7 +150,8 @@ edit mode, serialized by `autoPauseQuery()` into the generated preview links (`s
 `buildServerUrl`, `buildSourceUrl`), and consumed only under the `isPreview` gate in `renderer.js`.
 Two consequences that look contradictory but are both correct: it never fires in edit mode (so editing
 is never auto-interrupted), and `.pause-group` is hidden in preview mode, where the value is already
-baked into the URL. The user-facing wording is the input's `title` in `index.html`.
+baked into the URL. The user-facing wording is in `index.html`: the `.pause-group` **label** carries the
+semantics (it needs no hover — unlike the other two, this input gives no live feedback), the `title` adds the rest. Change both together.
 
 `?js=<url>` loads a shader from any http(s) JS file pushing into `window.__SHADER_REGISTRY__` (same shape
 as a generated product). `validateJsUrl()` checks the **scheme only** (`http:`/`https:`) — hosts are
@@ -188,11 +186,10 @@ adds `validateGlslShape()`, which rejects **only what is guaranteed to fail in e
 (missing `mainImage`, own `#version`, redefining `void main()`, `script` tags); comments are stripped
 first so a comment reading `void main()` is not a false rejection. **Do not put a real compiler in the
 serverless request path.** No GPU there, and the only viable option (glslangValidator, 6.7 MB binary)
-rejects shaders that work: `70s-melt-color` compiles, links and renders fine in real WebGL2/ANGLE but
-glslang fails it. `BROWSER_DIVERGENT` in `scripts/lib/glsl-backend-glslang.js` exists for exactly this,
-and that list is empirical and necessarily incomplete — as a *blocking* gate, every uncatalogued
-divergence becomes "this user cannot publish and has no way to appeal". Cheap to absorb in CI, expensive
-for users. The browser gate is a UX guardrail (bypassable by direct POST), not a security control; the
+rejects shaders that work — see the `70s-melt-color` case above. `BROWSER_DIVERGENT` in
+`scripts/lib/glsl-backend-glslang.js` catalogues these, but the list is empirical and necessarily
+incomplete: as a *blocking* gate, every uncatalogued divergence becomes "this user cannot publish and
+has no way to appeal". Cheap to absorb in CI, expensive for users. The browser gate is a UX guardrail (bypassable by direct POST), not a security control; the
 server shape check is the backstop. Both are needed.
 
 Two things to not do: never reject `precision` redeclaration (it is legal in ANGLE and `70s-melt-color`
@@ -208,10 +205,9 @@ must route every write and read through it — do not re-implement a check in ei
 5000 × 512 KB = 2.44 GiB, so the process OOMs long before it can return 503), and `validateStored()`
 on every read (storage is not trusted). **The write path must measure the same bytes the read path
 does** — go through `serialize()` on both sides. `MAX_STORED_BYTES` is 2× the code cap + 16 KB because
-JSON escaping can nearly double the bytes (every newline/quote/backslash becomes 2). Measuring code
-bytes on write and serialized bytes on read creates records that can be written but never read:
-GET returns 500 forever, and dedup silently degrades (unreadable content is treated as a collision, so
-every resubmit stores another full copy). `validateCode` checks size **before** shape, so a 600 KB
+JSON escaping can nearly double the bytes (every newline/quote/backslash becomes 2). Measure differently
+and you get records that can be written but never read: GET returns 500 forever, and dedup degrades
+(unreadable content reads as a collision, so every resubmit stores another copy). `validateCode` checks size **before** shape, so a 600 KB
 payload reports "too large" rather than the misleading "missing mainImage".
 
 **Storage keys are content-addressed**: `contentKey(code)` = base62(sha256(code)) truncated to 8 chars,
@@ -232,7 +228,7 @@ comes from `x-forwarded-for`. Platform-level limits (Vercel Firewall / Netlify) 
 `file://` blocks module requests via CORS, and this page must survive being double-clicked.
 So there is no `import`/`export`; modules communicate through the shared global lexical scope.
 
-Four rules that follow from that, and that you must not break:
+Four rules that follow, and that you must not break:
 
 - **Order is the dependency graph.** The `<script>` list at the bottom of `index.html` is the
   authoritative ordering: `vendor/lz-string → config → state → params → ui → codec → renderer →
@@ -257,7 +253,7 @@ two order comments (file header list in `index.html` and the note in `README.md`
 
 ```
 /
-├── index.html              # DOM only — the <script> list at the bottom IS the dependency graph
+├── index.html              # DOM only — 底部 <script> 顺序即依赖图（见「Frontend modules」）
 ├── css/app.css             # 全部样式
 ├── js/                     # 浏览器运行时 —— 见下节「Frontend modules」
 │   ├── vendor/lz-string.js # 第三方库，原样搬运，禁止改动
@@ -271,7 +267,7 @@ two order comments (file header list in `index.html` and the note in `README.md`
 │   ├── share.js            # 分享 + 发布（含接口探测与体积预检）
 │   ├── editor.js           # 编辑器按键 + 链接解码
 │   └── app.js              # 启动编排 + 全局监听（最后加载）
-├── drafts/                 # WIP GLSL — not committed, NOT gitignored
+├── drafts/                 # WIP GLSL — 提交与忽略规则见「Commit rules」
 │   └── _temple.glsl        # `_` prefix = template
 ├── shader/                 # GENERATED — AI: never hand-edit (humans may edit *.shader.js)
 ├── img/                    # README screenshots
