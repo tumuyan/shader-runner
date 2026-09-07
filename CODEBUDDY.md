@@ -172,9 +172,11 @@ frames). The measured matrix behind these rules is in `docs/external-js.md`.
 
 **Publish-availability probe**: static hosting has no `/api/shader`, so `share.js` probes once at startup
 with `GET /api/shader` (no `id` → both backends answer 400 + JSON, zero side effects) and gates the two
-publish buttons (`uploadBtn`, `shareServerBtn`). **A JSON body is the only proof the backend exists** —
-status alone is not, because hosts with an SPA fallback rewrite unknown paths to `index.html` and return
-200 HTML. Gating uses `aria-disabled` + `.is-disabled`, **not** the `disabled` attribute: a disabled button
+publish buttons (`uploadBtn`, `shareServerBtn`). The verdict needs **both** status and body: status alone is
+fooled by SPA fallbacks (unknown path → `index.html`, 200 HTML); "is it JSON" alone is fooled by gateways
+answering **404 + JSON** (measured on `cnb.run` dev domains). A real backend answers this probe with
+**400 + JSON** (`api/shader.js`: missing `id` → 400 `{error}`), so **404 = nobody serves that route**.
+Gating uses `aria-disabled` + `.is-disabled`, **not** the `disabled` attribute: a disabled button
 fires no click and shows no title, which is exactly the silent failure being fixed. State lives in
 `apiAvailable` / `apiUnavailableReason` (state.js); `ensureApiProbe()` memoizes so startup, `?id=` loading
 and clicks share one request. With `?id=`, `init()` awaits the probe and skips the doomed fetch when the

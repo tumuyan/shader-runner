@@ -205,7 +205,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 ├── shader/                 # 产物 + 清单（自动生成，提交）
 ├── scripts/                # 加入 / 移除 / 导出 / 清单 / 校验工具（Node 侧，零运行时依赖）
 │   └── dev-server.js       # 本地开发服务器：静态文件 + /api/shader（npm run dev）
-├── docs/                   # 分主题文档（shader-workflow / checking / external-js）
+├── docs/                   # 分主题文档（shader-workflow / checking / external-js / wont-fix）
 ├── shared/shader-api.js    # 服务端写入防护：体积 / ID / 限流 / 配额（两个后端共用）
 ├── api/shader.js           # Vercel Function
 └── netlify/functions/shader.js  # Netlify Function

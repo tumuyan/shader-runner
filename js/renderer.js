@@ -42,6 +42,10 @@ function compileShader(src, type) {
             }
             console.error('---');
         }
+        // 编译失败的 shader 对象同样是 GL 资源，不回收会随着一次次试错持续累积
+        // （改一行点一次「应用」就是这个循环）。上下文已丢失时 deleteShader 是空操作，
+        // 不必额外判断。
+        gl.deleteShader(shader);
         return null;
     }
     return shader;
@@ -97,15 +101,23 @@ function createProgram(userCode) {
     lastCompiledCode = '';
     const vs = compileShader(VERTEX_SHADER, gl.VERTEX_SHADER);
     const fs = compileShader(buildFragmentShader(userCode), gl.FRAGMENT_SHADER);
-    if (!vs || !fs) return false;
+    if (!vs || !fs) {
+        // vs 编译通过而 fs 失败时，vs 要在此回收 —— 用户代码有错是常态，泄漏的那一半
+        // 会一直堆着。compileShader 已自删失败的那个并返回 null，所以这里只需收 vs
+        // （fs 为 null 时 vs 必为 null，进不了这个分支，不必判 fs）。
+        if (vs) gl.deleteShader(vs);
+        return false;
+    }
     const prog = gl.createProgram();
     gl.attachShader(prog, vs); gl.attachShader(prog, fs);
     gl.linkProgram(prog);
+    // attach + link 之后 shader 对象就没人用了（program 持有它自己的副本），成败都
+    // 在这一行删：链接失败时同样得删，否则那又是一对泄漏。
+    gl.deleteShader(vs); gl.deleteShader(fs);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
         console.error('Program 链接失败:', gl.getProgramInfoLog(prog));
         gl.deleteProgram(prog); return false;
     }
-    gl.deleteShader(vs); gl.deleteShader(fs);
     program = prog; gl.useProgram(program);
     const names = ['iResolution','iTime','iTimeDelta','iFrame','iMouse','iDate','iSampleRate','iChannel0','iChannel1','iChannel2','iChannel3'];
     names.forEach(n => uniforms[n] = gl.getUniformLocation(program, n));
@@ -205,6 +217,8 @@ canvas.addEventListener('webglcontextrestored', () => {
 // ============================================================
 // 运行时状态（ paused / autoPauseMs / autoPauseFired / frameCap 在 state.js ）
 // ============================================================
+// startTime 的初值只是占位：真正的原点是 render() 的首帧（见那里），以便把 init()
+// 里那些 await 排除在时间轴之外。
 let startTime = performance.now()/1000, frameCount = 0, pauseOffset = 0;
 let frameAccum = 0;  // rAF 时间累加器，微秒级精度
 let pendingDelta = 0;  // 自上次渲染以来累计的真实时长，用于 iTimeDelta
@@ -213,6 +227,10 @@ const MAX_DELTA = 1;  // 单帧最大计入时间（秒），超出部分视为�
 // bx/by 初始为负：ShaderToy 用 iMouse.z > 0.0 判断是否按住，未点击过应处于「未按下」状态
 const mouse = {x:0,y:0,bx:-1,by:-1,down:false};
 let lastTime = 0;
+// 首帧哨兵必须独立于 lastTime：app.js 的 visibilitychange 会在回前台时改写 lastTime，
+// 拿它兼作哨兵的话，「首帧之前切走再切回」一次，时间原点就永远校正不回来了。
+// 另外 rAF 首帧时间戳理论上是 0，用 !lastTime 判断会让每帧都重置原点。
+let firstFrame = true;
 
 function resize(force) {
     const cw = canvas.clientWidth, ch = canvas.clientHeight;
@@ -241,9 +259,15 @@ function resize(force) {
 function render(time) {
     resize();
     const now = time / 1000;
+    // 时间原点取首帧，而不是脚本加载的那一刻。init() 里 ?id= 拉取、清单加载、shader
+    // 注入都是 await，那段画面根本不存在，算进 iTime 会让 shader 开局就跳几秒。
+    // 而且这段空白只能在这里排除：pauseOffset 只在 render 里逐帧累加，等第一帧跑起来
+    // 再补已经来不及了（首帧的 rawDelta 会被当成正常的一帧）。
+    // 首帧之前的隐藏时长同样不用补：这一段在这里被起点重置直接吃掉了。
+    if (firstFrame) { firstFrame = false; startTime = now; lastTime = now; }
     // 切后台回来时 rAF 会停摆，首帧 delta 可能是几百秒。截断并把超出部分计入冻结时间，
     // 否则 iTime / iTimeDelta 会出现巨大跳变（shader 里常见的一闪而过或画面突变）。
-    const rawDelta = lastTime ? now - lastTime : 0.016;
+    const rawDelta = now - lastTime;
     const delta = Math.min(rawDelta, MAX_DELTA);
     pauseOffset += rawDelta - delta;
     lastTime = now;
@@ -276,7 +300,10 @@ function render(time) {
     // 到达指定毫秒后自动暂停（仅预览模式，手动操作后永久失效）。
     // 带 isPreview 是刻意的：该参数服务于分享出去的预览链接，编辑模式要能无限时调代码。
     if (isPreview && autoPauseMs > 0 && !autoPauseFired) {
-        const elapsed = (performance.now() / 1000 - startTime) * 1000;
+        // 必须用 total（就是 iTime）而不是墙钟：只有它扣掉了切后台 / 上下文丢失 /
+        // 无可用 program 这些冻结时间。用墙钟的话，预览链接点开后切走一会儿再回来，
+        // 那段空白会被算进这 3 秒里 —— 动画本该播满 3 秒，实际只播一瞬就定格。
+        const elapsed = total * 1000;
         if (elapsed >= autoPauseMs) {
             paused = true;
             autoPauseFired = true;

@@ -58,8 +58,10 @@ shareUrlBtn.addEventListener('click', () => {
 // 探测用 GET /api/shader（不带 id）：两个后端都对缺 id 返回 400 + JSON，零副作用、
 // 不碰存储。URL 不带查询串，正好命中 netlify.toml 里 /api/shader 的精确重写规则。
 //
-// 判定绝不能只看状态码：带 SPA fallback 的托管会把未知路径重写成 index.html 并返回
-// 200 HTML，只看 res.ok 会把「没有后端」判成「有后端」。必须是 JSON 才算后端在说话。
+// 判定必须状态码 + 响应体两边都看，只看一边都会判错：
+//   - 只看状态码：SPA fallback 把未知路径重写成 index.html 回 200 HTML，误判为有后端。
+//   - 只看「是不是 JSON」：网关（实测 cnb.run 开发域）对未知路径回 404 + JSON，同样误判。
+// 真后端对这个探测（GET 不带 id）一律 400 + {error}，故 404 = 没人接这条路由。
 async function probeApiAvailability() {
     if (location.protocol === 'file:') {
         return { ok: false, reason: '本地文件打开（file://），没有发布接口' };
@@ -74,10 +76,18 @@ async function probeApiAvailability() {
             signal: ctrl.signal,
         });
         const text = await res.text();
+        const isHtml = /^<(?:!doctype|html)/i.test(text.trim());
+        if (res.status === 404) {
+            return {
+                ok: false,
+                reason: isHtml
+                    ? '当前站点是静态托管，未部署 /api/shader 发布接口'
+                    : '当前站点未部署 /api/shader 发布接口（探测请求返回 404）',
+            };
+        }
         let payload = null;
         try { payload = JSON.parse(text); } catch (e) { /* 不是 JSON */ }
         if (payload && typeof payload === 'object') return { ok: true };
-        const isHtml = /^<(?:!doctype|html)/i.test(text.trim());
         return {
             ok: false,
             reason: isHtml
@@ -172,7 +182,31 @@ function tooBigToUpload(code) {
 
 // ---- 发布：上传到服务器换固定短链 ----
 // 统一 API 路径（Netlify 通过重写规则映射到 /.netlify/functions/shader）
+
+// 两个「发布」入口（顶栏 / 编辑器）是同一个动作，反馈要两侧同步：只改 uploadBtn 的话，
+// 从顶栏点发布改的是此刻看不见的那个按钮。一并置灰还挡住重入 —— 限流按次计数
+// （10 分钟 20 次），重复点击会把自己额度点完。
+let publishPending = false;
+// 空闲文案快照：上传中会改写 textContent，恢复时还原（两个按钮都叫「发布」是巧合）
+const publishIdleLabel = new Map([uploadBtn, shareServerBtn].map(b => [b, b.textContent]));
+function setPublishBusy(busy) {
+    publishPending = busy;
+    for (const btn of [uploadBtn, shareServerBtn]) {
+        if (busy) {
+            // 与「发布不可用」同用 aria-disabled + .is-disabled：disabled 属性既不派发
+            // click 也不显示 title。重入由 publishPending 挡，不靠 disabled。
+            btn.classList.add('is-disabled');
+            btn.setAttribute('aria-disabled', 'true');
+            btn.textContent = '上传中...';
+        } else {
+            btn.textContent = publishIdleLabel.get(btn);
+        }
+    }
+    if (!busy) applyPublishAvailability();   // 别把「发布不可用」状态一并抹掉
+}
+
 async function uploadShader(rawCode) {
+    if (publishPending) return;   // 上一个请求还没回来，忽略重复点击
     // 与分享路径统一用 trim 后的值：否则「发布上去的代码」和「分享出去的代码」不是一份，
     // 而内容寻址会让它们拿到不同的 ID。
     const code = rawCode.trim();
@@ -184,9 +218,7 @@ async function uploadShader(rawCode) {
         showToast('☁ 代码未通过本地编译，请先「应用」确认能正常运行再发布');
         return;
     }
-    const label = '上传中...';
-    uploadBtn.textContent = label;
-    uploadBtn.disabled = true;
+    setPublishBusy(true);
     try {
         const res = await fetch(API_PATH, {
             method: 'POST',
@@ -221,8 +253,7 @@ async function uploadShader(rawCode) {
         showToast(prefix + ' (' + err.message + ')，已改用本地分享（URL 会较长）');
         localShare();
     } finally {
-        uploadBtn.textContent = '发布';
-        uploadBtn.disabled = false;
+        setPublishBusy(false);
     }
 }
 uploadBtn.addEventListener('click', requestPublish);

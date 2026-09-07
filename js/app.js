@@ -136,9 +136,11 @@ window.addEventListener('resize', () => resize());
 document.addEventListener('visibilitychange', () => {
     // 切后台期间 rAF 不跑，render 无法逐帧累加，故回前台时一次性补偿这段空白。
     // 用增量累加（而非赋值），才能和 render 里的冻结逻辑叠加而不是互相覆盖。
-    if (!document.hidden) {
+    // 首帧还没跑过时不补偿：那时 lastTime 仍是 0，累加会凭空造出一段 pauseOffset，
+    // 而首帧前的空白（含这一段隐藏）本就由 render 重置时间原点直接排除。
+    if (!document.hidden && !firstFrame) {
         const n = performance.now() / 1000;
-        if (lastTime) pauseOffset += n - lastTime;
+        pauseOffset += n - lastTime;
         lastTime = n;
     }
     if (isPreview) return;
