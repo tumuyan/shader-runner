@@ -73,47 +73,83 @@ function encodeShader(code) {
     }
 }
 
-function buildShareUrl(mode, code) {
-    const base = window.location.origin + window.location.pathname;
-    const compressed = encodeShader(code);
-    if (!compressed) return base;
-    // 自定义编码：用不在 lz-string 字母表 ([A-Za-z0-9+-$']) 中的字符替换 +=$'，避免 encodeURIComponent 膨胀
-    //   + → _    $ → .    ' → ~
-    const safe = compressed.replace(/[+$']/g, c => ({
-        '+': '_',
-        '$': '.',
-        "'": '~'
-    }[c]));
-    return base + '?mode=' + mode + '#code=' + safe;
+/**
+ * 本页自身的地址（不含 query / hash）。所有链接都从这里起步，别再各处各拼一次。
+ *
+ * file:// 下 location.origin 是**字符串** "null"（不是 null，是四个字母），
+ * origin + pathname 会拼出 "null/home/…/index.html" 这种打不开的链接。而这个页面
+ * 刻意要能双击直接打开（js/ 不用 ES module 就是为此），所以必须特判。
+ */
+function pageBase() {
+    if (window.location.protocol === 'file:') {
+        return window.location.href.split(/[?#]/)[0];
+    }
+    return window.location.origin + window.location.pathname;
 }
 
-// 三个「限制类」参数：只在用户填了非 0 值时才拼进 URL，避免默认链接挂一串 &xxx=0
-function maxSizeQuery() {
-    const v = parseInt(maxSizeInput.value, 10);
-    return v > 0 ? '&maxSize=' + v : '';
+// 自定义编码：把 lz-string 字母表里 URL 不友好的三个字符换成安全的，
+// 免得整串再走一遍 encodeURIComponent 而膨胀。   + → _    $ → .    ' → ~
+function safeEncode(compressed) {
+    return compressed.replace(/[+$']/g, c => ({ '+': '_', '$': '.', "'": '~' }[c]));
 }
-function fpsCapQuery() {
-    const v = parseInt(fpsCapInput.value, 10);
-    return v > 0 ? '&fpsCap=' + v : '';
+
+/**
+ * 三个「限制类」参数，合成一段返回。
+ *
+ * 只在用户填了非 0 值时才拼，避免默认链接挂一串 &xxx=0。合成一段（而不是各自返回
+ * 一段）是为了让调用方无法只拼其中两个 —— 漏拼一个的链接过去真出现过。
+ *
+ * 其中 autoPauseMs 与另两个性质不同：它不实时作用于当前页，只经本函数序列化进生成
+ * 的链接，由预览模式消费（js/renderer.js 的 isPreview 门控）。
+ */
+function limitParams() {
+    const out = [];
+    const add = (name, input) => {
+        const v = parseInt(input.value, 10);
+        if (v > 0) out.push(name + '=' + v);
+    };
+    add('maxSize', maxSizeInput);
+    add('fpsCap', fpsCapInput);
+    add('autoPauseMs', autoPauseInput);
+    return out;
 }
-// 与另两个限制参数不同：autoPauseMs 不实时作用于当前页，只经本函数序列化进生成的链接，
-// 由预览模式消费（renderer.js 的 isPreview 门控）。三条路径 share.js / buildServerUrl / buildSourceUrl 都走这里。
-function autoPauseQuery() {
-    const v = parseInt(autoPauseInput.value, 10);
-    return v > 0 ? '&autoPauseMs=' + v : '';
+
+/**
+ * 唯一的链接构建出口：mode / src / js / 三个限制参数 → query，code 或 id → hash。
+ *
+ * 为什么这么分：code 压缩后动辄几 KB，放 query 会被服务器与 CDN 按 URL 长度截断
+ * （hash 根本不发到服务端）；id 跟着进 hash 是为了让两种「从哪取代码」的写法一致。
+ * 其余都是页面参数，进 query —— 可读性也是一部分，`?src=shader/x.shader.js`
+ * 在地址栏里一眼能认出来。
+ *
+ * 旧链接不受影响：此前 buildShareUrl / buildServerUrl 把限制参数拼在 `#code=` 之后
+ * （等于落进 hash），而解析侧 params.js 本来就是 query + hash 双读，两边都认。
+ */
+function buildUrl(opts) {
+    const q = ['mode=' + encodeURIComponent(opts.mode || 'edit')].concat(limitParams());
+    if (opts.src) q.push('src=' + encodeURIComponent(opts.src));
+    if (opts.js) q.push('js=' + encodeURIComponent(opts.js));
+    let url = pageBase() + '?' + q.join('&');
+    if (opts.code) url += '#code=' + opts.code;
+    else if (opts.id) url += '#id=' + opts.id;
+    return url;
+}
+
+function buildShareUrl(mode, code) {
+    const compressed = encodeShader(code);
+    if (!compressed) return pageBase();
+    return buildUrl({ mode: mode, code: safeEncode(compressed) });
 }
 
 function buildServerUrl(mode, id) {
-    const base = window.location.origin + window.location.pathname;
-    return base + '?mode=' + mode + '#id=' + id + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
+    // id 来自服务端响应，缺了就别产链接：否则 share.js 会把一条光杆 ?mode=preview
+    // 复制给用户，还报「已发布」—— 比当场报错难查得多。
+    if (!id) return pageBase();
+    return buildUrl({ mode: mode, id: id });
 }
 
-// ?src=（内置文件路径）与 ?js=（外部 JS URL）共用一个参数位：同一时刻
-// 只可能有一个来源，两个都空时返回不带来源参数的链接（仅模式/限制参数）。
+// ?src=（内置文件路径）与 ?js=（外部 JS URL）共用一个参数位：同一时刻只可能有一个
+// 来源（state.js 里两者互斥），都为空时就是一条不带来源的普通链接。
 function buildSourceUrl() {
-    const base = window.location.origin + window.location.pathname;
-    const from = currentSrc ? '&src=' + encodeURIComponent(currentSrc)
-               : currentJs ? '&js=' + encodeURIComponent(currentJs)
-               : '';
-    return base + '?mode=preview' + maxSizeQuery() + fpsCapQuery() + autoPauseQuery() + from;
+    return buildUrl({ mode: 'preview', src: currentSrc, js: currentJs });
 }

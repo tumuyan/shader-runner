@@ -10,13 +10,13 @@
 
 ## 快速开始
 
-浏览器直接打开即可；走 HTTP 能解锁全部功能（`file://` 属于非安全上下文，剪贴板 API 不可用，分享按钮会静默失败）。
-
 ```bash
 open index.html    # 直接打开
 npx serve .        # 或走 HTTP（只有静态文件，没有 /api/shader）
 npm run dev        # 连「发布」一起调：静态文件 + 本地 /api/shader（零依赖）
 ```
+
+浏览器直接打开即可；走 HTTP 能解锁全部功能（`file://` 属于非安全上下文，剪贴板 API 不可用，分享按钮会静默失败）。
 
 ## 功能
 
@@ -42,9 +42,10 @@ npm run dev        # 连「发布」一起调：静态文件 + 本地 /api/shade
 | `fpsCap` | 帧率上限，0=不限 | `?fpsCap=30` |
 | `autoPauseMs` | 仅预览模式：链接打开后按毫秒自动暂停，手动暂停后失效 | `?autoPauseMs=3000` |
 
-优先级：`code` > `id` > `src` > `js` > 默认 shader。
-
-`?js=` 能指向任意 http(s) 地址，但目标服务器必须满足三个响应头（源码托管站的 raw 接口基本都不满足）—— 详见 [docs/external-js.md](docs/external-js.md)。
+- `mode` / `src` / `js` 与三个限制参数走 query，`code` 与 `id` 走 hash（压缩后几 KB，hash 不会发给服务端、也就不会被按 URL 长度截断）。
+- 两种写法都能解析：同一参数同时出现在 query 和 hash 里时以 hash 为准，手写链接不必记落点。
+- 优先级：`code` > `id` > `src` > `js` > 默认 shader。
+- `?js=` 能指向任意 http(s) 地址，但目标服务器必须满足三个响应头（源码托管站的 raw 接口基本都不满足）—— 详见 [docs/external-js.md](docs/external-js.md)。
 
 ## 用 AI 开发 shader
 
@@ -59,12 +60,15 @@ npm run add xxx                          # 加入内置：生成产物 + 刷新�
 git add shader/ && git commit            # 只提交产物，drafts/ 留在本机
 ```
 
-完整的命令、状态机与注意事项见 [docs/shader-workflow.md](docs/shader-workflow.md)。
+命令全集、状态机与注意事项见 [docs/shader-workflow.md](docs/shader-workflow.md)。
 
 ## 校验
 
-`npm run check` 是总校验：清单同步 + 字段检查 + 草稿同步 + **GLSL 运行校验**（真实 WebGL2 上下文里编译、
-链接、渲染多帧，而不是只做静态语法检查）。细节与 CI 配置见 [docs/checking.md](docs/checking.md)。
+```bash
+npm run check
+```
+
+总校验：清单同步 + 字段检查 + 草稿同步 + 服务端写入防护 + **GLSL 运行校验**（真实 WebGL2 上下文里编译、链接、渲染多帧，而不是只做静态语法检查）。任一项失败退出码 1。细节与 CI 配置见 [docs/checking.md](docs/checking.md)。
 
 ## 部署
 
@@ -74,12 +78,7 @@ git add shader/ && git commit            # 只提交产物，drafts/ 留在本�
 | **Vercel** | push 即部署，支持「发布」，存储默认在内存（重启丢失），可换 Vercel KV / Blob |
 | **任意静态托管**（GitHub Pages / Cloudflare Pages 等） | 上传 `index.html`、`css/`、`js/` 与 `shader/` 即可。没有 `/api/shader`，启动探测不到接口会自动把「发布」按钮置灰；「分享」不受影响 |
 
-**发布接口探测**：启动时发一次 `GET /api/shader`（不带 `id`，两个后端都返回 400 + JSON，零副作用），
-响应是 JSON 才认为后端存在 —— 只看状态码会被带 SPA fallback 的托管骗过（未知路径被重写成 `index.html` 返回 200 HTML）。
-
-### 本地调试与 vercel CLI
-
-页面本身是静态的，但「发布」依赖 `/api/shader`；用纯静态服务器（`npx serve .`）打开没有该接口 → 发布按钮置灰。
+页面本身是静态的，但「发布」依赖 `/api/shader`，用纯静态服务器（`npx serve .`）打开时发布按钮会置灰：
 
 ```bash
 npm run dev              # 推荐：零依赖，静态文件 + 直接 import 线上那个 api/shader.js
@@ -87,9 +86,7 @@ npx vercel dev -L -y     # 或真 CLI（-L 本地模式，无需登录），额�
 npm run dev:netlify      # 装了 netlify-cli 时用，连 Netlify 的 redirect 一起调
 ```
 
-**vercel CLI 不是必需**：它只是命令行工具而非构建依赖，Vercel 云端自己装依赖、自己打包，所以已从依赖移除；部署、CI、`npm run check` 都不需要它。
-
-> `vercel dev` 每次请求可能起新的函数进程，而 Vercel 版是内存存储 → 可能出现「POST 返回了 id、紧接着 GET 却 404」。这是多实例下内存存储的预期行为，不是 bug；要验「存了能读出来」用 `npm run dev`（单进程），或把 `api/shader.js` 的 `store` 换成 Vercel KV / Blob。
+> `vercel dev` 每次请求可能起新的函数进程，而 Vercel 版是内存存储 → 可能出现「POST 返回了 id、紧接着 GET 却 404」。这是多实例下内存存储的预期行为，不是 bug；要验「存了能读出来」用 `npm run dev`（单进程）。
 
 ### 服务端的写入限制
 
@@ -102,64 +99,12 @@ npm run dev:netlify      # 装了 netlify-cli 时用，连 Netlify 的 redirect 
 | 请求体 | ~1 MB | Netlify 侧在 `JSON.parse` **之前**按体积拒（413）；Vercel 的 body 由平台预解析，由 code 校验兜住（400） |
 | 写入频率 | 20 次 / 10 分钟 / IP | 超了返回 429 + `Retry-After`，前端自动改用本地分享 |
 | 读取频率 | 1200 次 / 10 分钟 / IP | 只挡爬取，正常浏览与分享不受影响 |
-| ID | 8 位，`crypto` 生成 | 不用 `Math.random`（可预测＝可枚举）；写入前重试避让碰撞 |
 | 存储条目 | 5000（内存存储） | 满了返回 503，而不是让函数 OOM |
-| 存储字节 | 64 MB（内存存储） | 只按条数算不够：5000 × 512 KB = 2.44 GiB，远超函数内存，会先 OOM 再谈 503 |
-| 记录体积 | 1 MB（序列化后） | **写入与读取量的是同一个字节数**。量法不一致会出现「存得进去、读不出来」的记录 |
+| 存储字节 | 64 MB（内存存储） | 只按条数算不够：5000 × 512 KB = 2.44 GiB，会先 OOM 再谈 503 |
 
-读取侧同样不信任存储：ID 先过 `^[A-Za-z0-9]{1,8}$`（挡路径穿越），内容再过 JSON + 字段 + 体积校验，
-坏数据报 500「存储内容已损坏」，而不是把脏数据当 shader 反射给前端。
+读取侧同样不信任存储：ID 先过 `^[A-Za-z0-9]{1,8}$`（挡路径穿越），内容再过 JSON + 字段 + 体积校验，坏数据报 500「存储内容已损坏」，而不是把脏数据当 shader 反射给前端。
 
-### 编译验证：为什么放在浏览器侧
-
-写入前要求 shader 真的能编译，这件事**只能由浏览器做**，分两层：
-
-| 层 | 手段 | 拦什么 |
-|---|---|---|
-| 浏览器（发布前） | 本机 WebGL2/ANGLE 编译 + 链接成功（`lastCompiledCode`） | 语法错、未定义标识符、链接失败 —— 零误判 |
-| 服务端（写入前） | `validateGlslShape()`：只在「必定编译不过」时拒 | 非 GLSL 载荷、与包装器抢名字/抢指令的写法 |
-
-**服务端不做真编译，原因有两条，第二条是决定性的：**
-
-1. Serverless 没有 GPU，跑不了 WebGL2。硬塞 Playwright + Chromium 进函数包是几百 MB、冷启动数秒、
-   且只有 SwiftShader 软件渲染 —— 不能放在请求路径上。
-2. 唯一可行的 glslangValidator 二进制（6.7 MB）**会误杀合法 shader**。仓库自带的 `70s-melt-color`
-   在真实 WebGL2/ANGLE 下编译 + 链接 + 渲染全部通过，glslang 却判它失败（`'mediump'` 重载精度）。
-   `scripts/lib/glsl-backend-glslang.js` 里的 `BROWSER_DIVERGENT` 就是为此存在的，而那张表是
-   **实测攒出来的、必然不完整** —— 每一条都对应一次「某个 shader 被错杀」。拿它当写入门槛，
-   等于把尚未发现的分歧全部变成「用户无法发布且无处申诉」。CI 里误报很便宜（维护者看一眼，
-   浏览器里验证，加一条）；用户侧误报很贵（他只会觉得这个站坏了）。
-
-所以服务端的形态校验**只收「无论哪个实现都必定失败」的特征**：缺 `mainImage`、自带 `#version`、
-重复定义 `void main()`、含 `script` 标签。判定前会先剥掉注释，避免注释里写一句 `void main()` 就被误杀。
-
-需要说清楚：浏览器那道是**体验护栏，不是安全控制** —— 直接 POST 一下就绕过去了。服务端形态校验
-才是兜底。两边各管各的，都不能省。
-
-**这些限制是减速带，不是墙。** Serverless 每个实例独立计数、跨实例不共享，真正生效的上限约等于
-「阈值 × 同时存活的实例数」；Vercel 侧 IP 取自 `x-forwarded-for`，理论上可伪造。要真正拦 Abuse，
-请在平台层配（Vercel Firewall / Netlify 自带限速）。详见 [docs/checking.md](docs/checking.md)。
-
-### 为什么存储键用内容哈希
-
-内容寻址真正的价值不是省空间，而是**改变存储耗尽攻击的成本模型**：
-
-| 攻击 | 现状（随机 ID） | 内容寻址后 |
-|---|---|---|
-| 10000 个 IP 各发同一份 512 KB | 存 10000 份 = 4.9 GB | **存 1 份** |
-| 10000 个 IP 各发不同 512 KB | 存 4.9 GB | 存 4.9 GB，但攻击者得真上传 5 GB |
-
-洪水从「按请求数计费」变成「按不同内容的字节数计费」。这是把 O(便宜) 的攻击改成 O(昂贵)，
-比任何配额都有效 —— 所以字节预算仍然保留，两者正交：内容寻址让攻击变贵，字节预算让它有界。
-
-两个必须小心的地方：
-
-- **8 位键只取了哈希的低 47.5 bit**，5000 条时碰撞概率约 6e-8。随机 ID 碰撞能被检出并重试，
-  内容哈希碰撞却会被误判成「同一份内容」—— 用户会拿到播放错误 shader 的链接。所以每次写入
-  都要**取出内容比对**：相同才去重，不同则判定碰撞、退回随机 ID（`assignId()` 已处理）。
-- **ID 由内容派生后，未授权读取反而更难**：攻击者要猜的是完整 shader 源码，熵远高于 47.5 bit。
-  代价是多了一个「确认某份已知内容是否存在」的 oracle —— 考虑到 ID 本来就是为了分享出去的，
-  这个代价可忽略。
+这些限制是**减速带，不是墙**（Serverless 跨实例不共享计数、IP 可伪造）；要真正拦 abuse 请在平台层配（Vercel Firewall / Netlify 自带限速）。
 
 ## ShaderToy Uniforms
 
@@ -205,7 +150,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 ├── shader/                 # 产物 + 清单（自动生成，提交）
 ├── scripts/                # 加入 / 移除 / 导出 / 清单 / 校验工具（Node 侧，零运行时依赖）
 │   └── dev-server.js       # 本地开发服务器：静态文件 + /api/shader（npm run dev）
-├── docs/                   # 分主题文档（shader-workflow / checking / external-js / wont-fix）
+├── docs/                   # 分主题文档（见下）
 ├── shared/shader-api.js    # 服务端写入防护：体积 / ID / 限流 / 配额（两个后端共用）
 ├── api/shader.js           # Vercel Function
 └── netlify/functions/shader.js  # Netlify Function
@@ -213,7 +158,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 技术栈：WebGL2 + lz-string，纯 HTML/CSS/JS 无外部依赖；服务端发布可选 Netlify Blob / Vercel Functions。
 
-`js/` 里的脚本是有意不用 ES module 的：`file://` 下模块请求会被 CORS 拦掉，而这个页面必须能双击直接打开。
-代价是没有 import/export，模块之间靠**加载顺序 + 共享全局词法作用域**通信 —— 所以顺序即依赖顺序
-（`index.html` 底部的 `<script>` 列表就是依赖图，不要随意调换），跨模块共享的状态统一放在 `js/state.js`、
-常量放在 `js/config.js`。每个文件顶部都写明了「依赖 / 被依赖」。
+`js/` 里的脚本是有意不用 ES module 的：`file://` 下模块请求会被 CORS 拦掉，而这个页面必须能双击直接打开。代价是没有 import/export，模块之间靠**加载顺序 + 共享全局词法作用域**通信 —— 所以顺序即依赖顺序（`index.html` 底部的 `<script>` 列表就是依赖图，不要随意调换），跨模块共享的状态统一放在 `js/state.js`、常量放在 `js/config.js`。
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [docs/shader-workflow.md](docs/shader-workflow.md) | 加 / 改 / 删 shader 的流程与状态机 |
+| [docs/checking.md](docs/checking.md) | 各校验项、CI、服务端写入防护怎么验 |
+| [docs/external-js.md](docs/external-js.md) | `?js=` 外部源的响应头要求与实测矩阵 |
+| [docs/design.md](docs/design.md) | 设计与取舍（为什么这么定） |
+| [docs/wont-fix.md](docs/wont-fix.md) | 已知但不改的议题 |
+| [CODEBUDDY.md](CODEBUDDY.md) | 给 AI 的规则：做什么、怎么做、不做什么 |

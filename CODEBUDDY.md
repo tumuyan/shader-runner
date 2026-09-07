@@ -2,255 +2,151 @@
 
 Guidance for AI assistants working in this repo. A single-page WebGL2 GLSL runner — `index.html` is markup only, logic lives in `js/*.js`, zero build step.
 
+**这里只写规则：做什么、怎么做、不做什么。** 设计理由在 `docs/design.md`，用户用法在 `README.md` —— 不要在这里复述「为什么」。
+
+## 铁律
+
+| 场景 | 做 | **不**做 |
+|---|---|---|
+| 改 shader | 改 `drafts/*.glsl` → `npm run add <name>` | 手改 `shader/*.shader.js` |
+| `product-edited` / `conflict` | **停下来问用户** | 用 `--force` 强推 |
+| 提交 | 只提交 `shader/`；`drafts/` 留在工作区 | 提交 `drafts/`；把它写进 `.gitignore` |
+| `glsl:check` 失败 | 先怀疑工具，浏览器里验证过再动 shader | 为了让校验器变绿去改对的 shader |
+| 近黑 / 全黑帧 | 当警告 | 调亮 shader 去消掉它 |
+| GLSL 包装器（两份） | 改一处同步另一处 | 去重排模板字符串里的缩进（那也是 GLSL 文本） |
+| 新的跨模块状态 / 常量 | 加进 `js/state.js` / `js/config.js` | 跨文件偷渡变量 |
+| 加载顺序 | 改 `index.html` 底部 `<script>` 列表 + 两处顺序注释 | 随手调换顺序（TDZ → `ReferenceError`） |
+| DOM 访问 | 走 `js/ui.js` | 自己 `getElementById` |
+| URL 参数 | 读用 `params.js` 的 `pick()`，写用 `codec.js` 的 `buildUrl()` | 手写 `h.x \|\| p.get('x')`、自己拼链接 |
+| 服务端写入校验 | 只改 `shared/shader-api.js` | 在两个 entry 里各实现一遍 |
+| 服务端 GLSL 校验 | 只收「必定失败」的形态特征 | 放真编译器；把写侧规则套到读路径 |
+| `precision` 重声明 | 放行（ANGLE 合法） | 拒绝 |
+| 发布按钮置灰 | `aria-disabled` + `.is-disabled` | 用 `disabled` 属性（无 click、无 title） |
+| 编译失败黑屏 | 保持 | 「修」成临时 program 成功后替换 |
+| 发布前校验 | 用 `lastCompiledCode`（浏览器 ANGLE） | 相信静态检查结果 |
+
 ## Commands
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` | Run locally **with a working `/api/shader`** (static files + the real `api/shader.js` handler, in-memory store). Use this when testing publish — plain static servers have no API, so the probe fails and publish is greyed out. |
-| `npx serve .` | Static-only local run — fine for viewing, but `/api/shader` is absent and publish is unavailable. |
-| `npm run add <name>` | Add a draft → writes `shader/x.shader.js` + refreshes manifest. Multiple names OK. |
-| `npm run add:all` | Re-assemble drafts that are already added (never adds new) |
-| `npm run add:check` | Exit 1 if a draft changed without re-adding (one step of `check`) |
-| `npm run add:refresh` | Rebuild manifest only — needed after hand-adding/-removing files in `shader/`, or **after hand-editing a `label`** |
-| `npm run status` | Show draft states (`npm run add` with no args does the same — read-only) |
-| `npm run remove <name>` | Remove a builtin: deletes `shader/x.shader.js` + refreshes manifest. **Never touches `drafts/`** |
+| `npm run dev` | 本地运行 **带可用 `/api/shader`**（静态 + 真实 handler，内存存储）。要测发布就用它 |
+| `npx serve .` | 纯静态，无 `/api/shader`，发布按钮会置灰 |
+| `npm run add <name>` | 草稿 → 产物 + 刷新清单。可传多个名 |
+| `npm run add:all` | 重装配已加入的草稿（不新增） |
+| `npm run add:check` | 草稿改了没重新 add → 退出 1（`check` 的一关） |
+| `npm run add:refresh` | 只重建清单。手改过 `label`、或手动增删 `shader/` 后必跑 |
+| `npm run status` | 看草稿状态（`add` 不带参数也是只读） |
+| `npm run remove <name>` | 删产物 + 刷新清单。**永不碰 `drafts/`** |
 | `npm run glsl:check` | GLSL 运行校验：真 WebGL2 编译 + 链接 + 渲染（传参需 `--`） |
 | `npm run draft:check` | 只校验 `drafts/*.glsl` |
 | `npm run api:check` | 服务端写入防护：体积 / ID / 限流 / 配额，两个 handler 都真跑一遍 |
-| `npm run ci:setup` | CI / 新机器环境准备（幂等，末尾自检）：依赖 + Chromium + 系统库 |
-| `npm run drafts:extract -- shader/x.js` | Reverse a product back into an editable `drafts/x.glsl` |
-| `npm run check` | **Superset** check: manifest sync + field lint + draft sync + GLSL compile. Use in CI. |
+| `npm run ci:setup` | CI / 新机器环境准备（幂等，末尾自检） |
+| `npm run drafts:extract -- shader/x.js` | 产物 → 可编辑草稿 |
+| `npm run check` | 总校验（CI 用）：清单同步 + 字段 + 草稿同步 + 写入防护 + GLSL |
 
-`<name>` is flexible — `underwater`, `underwater.glsl`, `drafts/underwater.glsl`,
-`shader/underwater.shader.js` all resolve to the same thing (exact match only, never prefix-guessed).
-`release` / `release:*` are silent aliases of `add` / `add:*`. Full flag lists live in each script's header comment.
+`<name>` 可写成 `underwater` / `underwater.glsl` / `drafts/underwater.glsl` / `shader/underwater.shader.js`，都是同一个东西（精确匹配，不猜前缀）。`release` / `release:*` 是 `add` / `add:*` 的别名。完整 flag 列表在各脚本的头注释里。
 
-## Commit rules
-
-`drafts/` is WIP and is **normally not committed** (the cloud environment persists untracked files).
-
-- Before committing: `git status --short`, then confirm the staged list.
-- If `drafts/` is staged, unstage it: `git restore --staged drafts/`. Commit it only on explicit request.
-- **Never add `drafts/` to `.gitignore`** — the cloud snapshots files git does *not* exclude, so ignoring them would destroy them on environment recreation.
-- `shader/manifest.js` is a build product but IS committed (static hosts can't list directories at runtime).
-
-## The `--` separator rule
-
-**Any flag requires `--` after the script name** — otherwise npm swallows it with **no error**:
+**任何 flag 都必须在脚本名后加 `--`**，否则 npm 会吞掉它且不报错：
 
 ```bash
 npm run add -- a --label X              # ✓
-npm run add a --label X                 # ✗ "X" parsed as a filename
-npm run drafts:extract s.js --force     # ✗ runs WITHOUT --force
+npm run add a --label X                 # ✗ "X" 被当成文件名
 ```
 
-Prefer the flag-free sub-commands (`add:all`, `add:check`, `add:refresh`, `status`, `check`) — they can't be
-swallowed. `add` with no args is deliberately read-only, so a missing separator wastes a command rather
-than causing a write.
+优先用无 flag 的子命令（`add:all` / `add:check` / `add:refresh` / `status` / `check`）。
 
-## GLSL run check
+## 改 shader 的流程
 
-`scripts/check-glsl.js` answers one question: **will this shader actually run in a browser?**
-Not "does it look syntactically fine".
+单向约束：**AI 只能 GLSL → JS；人类可以手改 JS。** 工具会检测并保护手改。
 
-Two backends: `browser` (default) compiles + links + renders several frames in a real WebGL2 context and
-is **authoritative**; `glslang` is a static compile used only when Chromium is unavailable and is
-**advisory**. `CI=true` fails outright on a glslang fallback — a green run on the weak backend is a fake
-green. `--allow-fallback` opts in explicitly.
-
-Three rules that bind you:
-
-- **When a check fails, suspect the tool before the shader.** Verify in a real browser before proposing
-  edits to a shader — do not "fix" shader code to satisfy a checker. (`70s-melt-color` runs fine in
-  Chromium/ANGLE but glslang rejects it — they are separate implementations of the same spec.)
-- **Near-black frames are a warning, never a failure.** Fade-in shaders are legitimately dark at t≈0;
-  several sample times are used. Don't brighten a shader to silence this.
-- **The GLSL wrapper lives in two places**: `js/renderer.js` (runtime, as `VERTEX_SHADER` /
-  `buildFragmentShader`) and `scripts/lib/glsl-wrap.js` (checker), sha1-compared every run — a mismatch
-  aborts, since a drifted wrapper makes "passed" a lie. Edit one, sync the other. The indentation inside
-  those template literals **is part of the GLSL text** — re-aligning it "for tidiness" trips the guard.
-
-Mechanism details (why the checker uses `extractShaderCode()`, what runtime env the browser backend
-replicates) are documented in the source files — read them there and keep them there.
-
-## Shader rules for AI
-
-**One-directional constraint: AI goes GLSL → JS; humans may hand-edit the JS.** The tooling detects and protects manual edits.
-
-| State | Meaning | `add` | `remove` | `--check` |
+| 状态 | 含义 | `add` | `remove` | `--check` |
 |---|---|---|---|---|
-| `unreleased` | no product yet | creates | no-op (warn) | ok |
-| `synced` | both unchanged | no-op | deletes | ok |
-| `foreign` | product not from this tool | refuses (needs `--force`) | refuses (needs `--force`) | ok |
-| `draft-stale` | only draft changed | updates | deletes (draft keeps the new code) | **exit 1** |
-| `product-edited` | only product hand-edited | **refuses** | refuses (needs `--force`) | warn |
-| `conflict` | both changed | **refuses** | refuses (needs `--force`) | **exit 1** |
+| `unreleased` | 无产物 | 创建 | no-op（警告） | ok |
+| `synced` | 两边都没动 | no-op | 删除 | ok |
+| `foreign` | 产物不是本工具生成 | 拒绝（需 `--force`） | 拒绝（需 `--force`） | ok |
+| `draft-stale` | 只有草稿变了 | 更新 | 删除（草稿保留新代码） | **exit 1** |
+| `product-edited` | 只有产物被手改 | **拒绝** | 拒绝（需 `--force`） | 警告 |
+| `conflict` | 两边都变了 | **拒绝** | 拒绝（需 `--force`） | **exit 1** |
 
-Three hashes (`draftHash` / `recordedHash` / `actualHash`) tell which side moved, so a human tuning a shader never trips CI and `add` never silently clobbers it.
+三个哈希（`draftHash` / `recordedHash` / `actualHash`）判定哪边动了 —— 人类微调 shader 不会误伤 CI，`add` 也不会静默覆盖。`remove` 只删产物，`add` 能按字节还原。
 
-- Change a shader by editing `drafts/*.glsl`, then `npm run add <name>`. Never hand-edit `shader/*.shader.js`.
-- On `product-edited` or `conflict`: **stop and ask the user** — only they can decide which side wins.
-- Never use `--force` to bypass a block without approval.
-- `remove` deletes only the product; `drafts/*.glsl` is never touched, so `add` brings it back byte-for-byte.
-- Exit code is trustworthy: if any draft is blocked the run exits 1, even if others succeeded.
+退出码可信：任一草稿被拦，整轮退出 1（即使其它成功）。
 
-Recovering a manual edit:
+捞回一次手改：
 
 ```bash
-npm run drafts:extract -- shader/x.shader.js --force   # pull edit back into the draft
-npm run add x                                          # refresh fingerprint (no --force)
+npm run drafts:extract -- shader/x.shader.js --force   # 把手改拉回草稿
+npm run add x                                          # 刷新指纹（无需 --force）
 ```
+
+## Commit rules
+
+- 提交前 `git status --short`，确认暂存列表。
+- `drafts/` 若被暂存：`git restore --staged drafts/`。只在明确要求时才提交。
+- **永不把 `drafts/` 写进 `.gitignore`** —— 云环境只快照 git 未忽略的文件，忽略等于销毁它们。
+- `shader/manifest.js` 是产物但要提交（静态托管运行时列不出目录）。
 
 ## Architecture
 
-**DOM**: `#glCanvas`, `#inputOverlay`, `#shaderCode` (textarea), `#shaderSelector` (dropdown),
-`#encodedUrlInput`, `#maxSizeInput`, `#fileInput`, `#toast`. Element IDs are discoverable in
-`index.html` — that is the authoritative list, fetched once in `js/ui.js`.
+**DOM**：`#glCanvas`、`#inputOverlay`、`#shaderCode`、`#shaderSelector`、`#encodedUrlInput`、`#maxSizeInput`、`#fileInput`、`#toast`。`index.html` 是唯一权威列表，`js/ui.js` 一次性取完。
 
-**Loading** (lazy — one shader at a time): `loadShaderIndex()` loads only `shader/manifest.js` →
-`window.__SHADER_MANIFEST__`, an array of `{ path, label }`. The dropdown renders from that index alone;
-**no `shader/*.shader.js` is fetched on first paint**. `ensureShader(path)` injects a single `<script>`
-the first time a shader is needed (dropdown pick or `?src=`), then caches it in `BUILTIN_SHADERS`.
+**加载**（懒加载，一次一个）：`loadShaderIndex()` 只加载 `shader/manifest.js` → `window.__SHADER_MANIFEST__`（`{ path, label }` 数组）。下拉只靠它渲染，**首屏不下载任何 `shader/*.shader.js`**；`ensureShader(path)` 在首次需要时注入一个 `<script>` 并缓存。
 
-- `SHADER_MANIFEST` — `{ path, label }` index, the **only** source for the dropdown.
-- `BUILTIN_SHADERS` — cache of already-loaded builtins `{ path, label, code }`.
-- `customShaders` — cache of `?js=` externals, keyed by URL. Separate from `BUILTIN_SHADERS` so rebuilding the dropdown doesn't lose them.
-- `injectedPaths` — already-injected paths/URLs (success or not), so a broken file isn't re-requested.
-- `currentSrc` / `currentJs` — which source is active; **mutually exclusive**. `loadShaderFile()` and `loadCustomUrl()` each clear the other's flag, or switching back would be mistaken for "already selected" and skipped.
+- `SHADER_MANIFEST` —— 下拉的唯一数据源
+- `BUILTIN_SHADERS` —— 已加载内置 `{ path, label, code }`
+- `customShaders` —— `?js=` 外部源，按 URL 缓存（与上面分开，重建下拉时不丢）
+- `injectedPaths` —— 已注入的路径/URL（成败都记），坏文件不会重复请求
+- `currentSrc` / `currentJs` —— 当前生效源，**互斥**；`loadShaderFile()` 与 `loadCustomUrl()` 各自清掉对方的标记，否则切回去会被当成「已选中」而跳过
 
-`manifest.js` carries `label` because the product holding it isn't loaded yet. Editing a label in
-`shader/*.shader.js` therefore requires `npm run add:refresh` — `npm run check` fails if you forget.
+`manifest.js` 之所以带 `label`：产物此时还没加载。因此手改 `shader/*.shader.js` 里的 label 必须跑 `npm run add:refresh`，`npm run check` 会拦。
 
-**Applying a shader**: every source (editor, dropdown, file, URL param) ends in `applyShader()` →
-`createProgram()`, which deletes the old `program` *before* compiling. So a compile/link failure leaves
-`program === null`, `render()` skips drawing → **black canvas**. That is the intended "your edit did not
-apply" signal, not a bug — don't "fix" it by compiling into a temp program and swapping on success:
-that leaves the previous shader animating after the editor closes, so a failed edit looks successful.
-Fully reversible — fixing the code and re-applying rebuilds the program.
+**Applying a shader**：所有来源（编辑器、下拉、文件、URL 参数）都汇入 `applyShader()` → `createProgram()`，它在编译**前**删旧 `program`，失败即 `program === null` → 黑屏。这是刻意的「编辑没生效」信号，不要修（理由见 `docs/design.md`）。完全可逆：改对了重新应用即重建 program。
 
-**Pipeline**:
+**Pipeline**：
 
 ```
-drafts/x.glsl ──add──▶ shader/x.shader.js ──▶ shader/manifest.js  (auto-refreshed)
+drafts/x.glsl ──add──▶ shader/x.shader.js ──▶ shader/manifest.js  (自动刷新)
       ▲                       │  ▲
-      │                       │  └── remove (deletes only the product)
+      │                       │  └── remove（只删产物）
       └────drafts:extract─────┘
 ```
 
-- `drafts/*.glsl` — `_` prefix = template, skipped by `--status`/`--all`.
-  Optional frontmatter `// @label:` / `// @name:` (metadata, stripped before hashing, these two only).
-- `shader/*.shader.js` — generated, committed.
-- `shader/manifest.js` — generated, committed. Holds `{ path, label }` per shader.
+- `drafts/*.glsl` —— `_` 前缀是模板，被 `--status` / `--all` 跳过。可选 frontmatter `// @label:` / `// @name:`（仅这两个，哈希前剥掉）
+- `shader/*.shader.js` —— 生成物，提交
+- `shader/manifest.js` —— 生成物，提交，每项 `{ path, label }`
 
-**URL params** (query + hash; hash parsed manually because `URLSearchParams` decodes `+` to space):
-`mode`, `code`, `id`, `src`, `js`, `maxSize`, `fpsCap`, `autoPauseMs`. Priority `code` > `id` > `src` > `js` > default.
+**URL params**（query + hash；hash 手工解析，因为 `URLSearchParams` 会把 `+` 解成空格）：`mode`、`code`、`id`、`src`、`js`、`maxSize`、`fpsCap`、`autoPauseMs`。优先级 `code` > `id` > `src` > `js` > 默认。
 
-Of the three limit params, `maxSize` and `fpsCap` are **live controls** — they take effect on the
-current page as soon as they change. `autoPauseMs` is **not**: it is a link parameter. It is entered in
-edit mode, serialized by `autoPauseQuery()` into the generated preview links (`share.js`,
-`buildServerUrl`, `buildSourceUrl`), and consumed only under the `isPreview` gate in `renderer.js`.
-Two consequences that look contradictory but are both correct: it never fires in edit mode (so editing
-is never auto-interrupted), and `.pause-group` is hidden in preview mode, where the value is already
-baked into the URL. The user-facing wording is in `index.html`: the `.pause-group` **label** carries the
-semantics (it needs no hover — unlike the other two, this input gives no live feedback), the `title` adds the rest. Change both together.
+- 每个参数都从 **query 和 hash 两处**读，由 `params.js` 里唯一的 `pick()` 合并，hash 优先 —— 别在别处手写合并逻辑。
+- 生成是读取的镜像：`codec.js` 只有 `buildUrl()` 一个出口，`mode`/`src`/`js` 与三个限制参数进 query，`code` **或** `id` 进 hash（`code` 可能几 KB，hash 不会发给服务端，也就不会被按 URL 长度截断）。三个限制参数由 `limitParams()` 一次给出，免得有调用方只拼两个。
+- `pageBase()` 特判 `file://`（那里 `location.origin` 是字符串 `"null"`）。
 
-`?js=<url>` loads a shader from any http(s) JS file pushing into `window.__SHADER_REGISTRY__` (same shape
-as a generated product). `validateJsUrl()` checks the **scheme only** (`http:`/`https:`) — hosts are
-deliberately unrestricted, since a host whitelist would only create false confidence.
+三个限制参数里 `maxSize` / `fpsCap` 是**实时控件**，改了立刻生效；`autoPauseMs` **不是** —— 它是链接参数：编辑模式下填，由 `limitParams()` 写进生成的预览链接，只在 `renderer.js` 的 `isPreview` 分支里消费。两个看似矛盾的推论都对：编辑模式下永不触发（不会打断编辑），预览模式下 `.pause-group` 隐藏（值已烧进 URL）。用户可见文案在 `index.html`：`.pause-group` 的 **label** 承载语义（它不像另两个有实时反馈，不能只在 hover 时说明），`title` 补剩下部分。**改就两处一起改。**
 
-**`<script src>` bypasses CORS but not CORP.** A working `?js=` target needs all three: a JS
-`Content-Type` (`text/plain` + `nosniff` is fatal with no client-side workaround), `Cross-Origin-Resource-Policy`
-absent or `cross-origin`, and `Access-Control-Allow-Origin: *` if CORP blocks. So `crossorigin` is a
-**fallback only** (`injectScript(src, true)`) — without ACAO it breaks loads that would otherwise succeed.
-Raw source endpoints (GitHub raw, CNB raw) serve `text/plain` + `nosniff` and can never work; use
-jsDelivr / unpkg, or a pages host. `diagnoseShaderUrl()` bisects failures with a CORS-mode fetch and
-deliberately does not eval the fetched text (that would rescue GitHub raw at the cost of anonymous stack
-frames). The measured matrix behind these rules is in `docs/external-js.md`.
+`?js=<url>` 从任意 http(s) JS 加载 shader（往 `window.__SHADER_REGISTRY__` 里推，形状同生成产物）。`validateJsUrl()` **只校验 scheme**（`http:`/`https:`）—— 故意不限 host，白名单只会制造虚假安全感。`crossorigin` 只作兜底（`injectScript(src, true)`），没有 ACAO 时会弄坏本来能成功的加载。`diagnoseShaderUrl()` 只做诊断，**绝不 eval 抓到的文本**。
 
-**Serverless**: frontend always calls `/api/shader`. Netlify rewrites it to `/.netlify/functions/shader`
-(Blob Storage); on Vercel `api/shader.js` handles it (in-memory, volatile).
+**Serverless**：前端只调 `/api/shader`。Netlify 重写到 `/.netlify/functions/shader`（Blob Storage）；Vercel 由 `api/shader.js` 处理（内存，易失）。
 
-**Publish-availability probe**: static hosting has no `/api/shader`, so `share.js` probes once at startup
-with `GET /api/shader` (no `id` → both backends answer 400 + JSON, zero side effects) and gates the two
-publish buttons (`uploadBtn`, `shareServerBtn`). The verdict needs **both** status and body: status alone is
-fooled by SPA fallbacks (unknown path → `index.html`, 200 HTML); "is it JSON" alone is fooled by gateways
-answering **404 + JSON** (measured on `cnb.run` dev domains). A real backend answers this probe with
-**400 + JSON** (`api/shader.js`: missing `id` → 400 `{error}`), so **404 = nobody serves that route**.
-Gating uses `aria-disabled` + `.is-disabled`, **not** the `disabled` attribute: a disabled button
-fires no click and shows no title, which is exactly the silent failure being fixed. State lives in
-`apiAvailable` / `apiUnavailableReason` (state.js); `ensureApiProbe()` memoizes so startup, `?id=` loading
-and clicks share one request. With `?id=`, `init()` awaits the probe and skips the doomed fetch when the
-backend is absent.
+**发布可用性探测**：`share.js` 启动时探一次 `GET /api/shader`（不带 `id`），据此置灰 `uploadBtn` / `shareServerBtn`。**判定要同时看状态码和响应体**（只看一个会被 SPA fallback 或「404 + JSON」的网关骗过）。状态存 `apiAvailable` / `apiUnavailableReason`（state.js）；`ensureApiProbe()` 记忆化，让启动、`?id=` 加载和点击共用一次请求。带 `?id=` 时 `init()` 先等探测，后端缺席就跳过那次注定失败的取。
 
-**Compile verification happens in the browser, not on the server.** `renderer.js` records
-`lastCompiledCode` (state.js) only on successful compile+link, and `share.js` refuses to publish code
-that differs from it — using the same ANGLE that will render it, so zero false verdicts. The server
-adds `validateGlslShape()`, which rejects **only what is guaranteed to fail in every implementation**
-(missing `mainImage`, own `#version`, redefining `void main()`, `script` tags); comments are stripped
-first so a comment reading `void main()` is not a false rejection. **Do not put a real compiler in the
-serverless request path.** No GPU there, and the only viable option (glslangValidator, 6.7 MB binary)
-rejects shaders that work — see the `70s-melt-color` case above. `BROWSER_DIVERGENT` in
-`scripts/lib/glsl-backend-glslang.js` catalogues these, but the list is empirical and necessarily
-incomplete: as a *blocking* gate, every uncatalogued divergence becomes "this user cannot publish and
-has no way to appeal". Cheap to absorb in CI, expensive for users. The browser gate is a UX guardrail (bypassable by direct POST), not a security control; the
-server shape check is the backstop. Both are needed.
+**编译验证在浏览器**：`renderer.js` 只在编译 + 链接成功后记录 `lastCompiledCode`，`share.js` 拒绝发布与它不一致的代码 —— 用的是将来渲染它的那个 ANGLE，零误判。服务端只加 `validateGlslShape()`。
 
-Two things to not do: never reject `precision` redeclaration (it is legal in ANGLE and `70s-melt-color`
-depends on it — `scripts/lib/glsl-wrap.js`'s header comment lumps it with wrapper conflicts, which is
-wrong), and never apply the write-side shape rules on the read path (they evolve; tightening them would
-turn historically valid records into "content corrupted", and reads are the only recovery path).
+**存储键是内容寻址的**：`contentKey(code)` = `base62(sha256(code))` 前 8 位，相同代码复用同一个 ID。8 位只保留 47.5 bit，**这里的哈希碰撞不是良性的**（随机 ID 碰撞能被 `isTaken` 检出并重试，内容哈希碰撞会被误判成「同一份内容」、把错误 shader 的链接发给用户）。所以 `assignId()` 必须**回读并比对内容**：相同 → 去重；不同 → 真碰撞，退回随机 ID 并重试。
 
-**Write limits live in `shared/shader-api.js`** (CJS, because the Netlify function is CJS and Vercel's ESM
-entry can default-import CJS but not the reverse). Both `api/shader.js` and `netlify/functions/shader.js`
-must route every write and read through it — do not re-implement a check in either entry. Enforced there:
-512 KB code cap (UTF-8 **bytes**, not `String.length`), ~1 MB body cap, 20 POST / 10 min / IP and 1200 GET /
-10 min / IP sliding window, `crypto` IDs, a 5000-entry **and** 64 MB cap on the in-memory store (entries alone is not enough:
-5000 × 512 KB = 2.44 GiB, so the process OOMs long before it can return 503), and `validateStored()`
-on every read (storage is not trusted). **The write path must measure the same bytes the read path
-does** — go through `serialize()` on both sides. `MAX_STORED_BYTES` is 2× the code cap + 16 KB because
-JSON escaping can nearly double the bytes (every newline/quote/backslash becomes 2). Measure differently
-and you get records that can be written but never read: GET returns 500 forever, and dedup degrades
-(unreadable content reads as a collision, so every resubmit stores another copy). `validateCode` checks size **before** shape, so a 600 KB
-payload reports "too large" rather than the misleading "missing mainImage".
-
-**Storage keys are content-addressed**: `contentKey(code)` = base62(sha256(code)) truncated to 8 chars,
-so identical code reuses one ID and duplicate submissions cost no extra storage. This is the real fix
-for storage exhaustion — it converts the attack from "cheap per request" to "expensive per distinct
-byte". The byte budget stays because the two are orthogonal. **Truncating to 8 chars keeps only 47.5
-bits, and a hash collision here is not benign** (unlike a random-ID collision, which `isTaken` catches
-and retries): treating a collision as "same content" hands the user a link to the wrong shader. So
-`assignId()` always **reads back and compares the content** — equal → dedupe; different → real
-collision, fall back to a random ID with retry. These are **speed bumps, not a wall**: serverless
-instances don't share counters, so the real ceiling is roughly `limit × live instances`, and on Vercel the IP
-comes from `x-forwarded-for`. Platform-level limits (Vercel Firewall / Netlify) are the real enforcement.
-`npm run api:check` exercises both handlers end to end.
+**写入限制集中在 `shared/shader-api.js`**（CJS，因为 Netlify function 是 CJS，Vercel 的 ESM 入口能默认导入 CJS，反之不行）。两个 entry 的每次读写都必须走它，不要在任一 entry 里自己实现检查。每次读取都要过 `validateStored()`（存储不可信）；**写路径和读路径必须量同一个字节数**（都走 `serialize()`）。`npm run api:check` 端到端打两个 handler。
 
 ## Frontend modules
 
-`js/` is loaded as **plain `<script src>` in a fixed order** — deliberately not ES modules:
-`file://` blocks module requests via CORS, and this page must survive being double-clicked.
-So there is no `import`/`export`; modules communicate through the shared global lexical scope.
+`js/` 由**固定顺序的普通 `<script src>`** 加载，故意不用 ES module（`file://` 会拦模块请求，而本页必须能双击打开）。没有 `import`/`export`，靠共享全局词法作用域通信。由此四条：
 
-Four rules that follow, and that you must not break:
+- **顺序即依赖图**：`index.html` 底部的 `<script>` 列表是权威顺序 —— `vendor/lz-string → config → state → params → ui → codec → renderer → catalog → share → editor → app`。加文件或调换顺序是一次依赖变更。
+- **跨模块共享可变状态放 `js/state.js`**（`currentSrc`、`currentJs`、`currentCode`、`paused`、`autoPauseMs`、`autoPauseFired`、`frameCap`、`contextLost`、`glResourcesReady`、`glInitFailed`）。只被一个模块用的状态留在那个模块里。
+- **共享常量放 `js/config.js`**（`DEFAULT_SHADER`、`MAX_SIZE_DEFAULT`、`FPS_CAP_DEFAULT`、`API_PATH`、`SHADER_MANIFEST_PATH`、`INDENT`）。
+- **每个文件开头有头注释**，写明它定义什么、依赖谁、被谁依赖。改动时保持它为真。
 
-- **Order is the dependency graph.** The `<script>` list at the bottom of `index.html` is the
-  authoritative ordering: `vendor/lz-string → config → state → params → ui → codec → renderer →
-  catalog → share → editor → app`. Adding a `<script>` or reordering the list is a dependency change.
-  A `const`/`let` used by an earlier file than the one declaring it throws `ReferenceError` (TDZ).
-- **Shared mutable state goes in `js/state.js`** (`currentSrc`, `currentJs`, `currentCode`, `paused`,
-  `autoPauseMs`, `autoPauseFired`, `frameCap`, `contextLost`, `glResourcesReady`, `glInitFailed`).
-  State used by exactly one module stays in that module. If you find yourself needing a new
-  cross-module variable, add it to `state.js` rather than smuggling it across file boundaries.
-- **Shared constants go in `js/config.js`** (`DEFAULT_SHADER`, `MAX_SIZE_DEFAULT`, `FPS_CAP_DEFAULT`,
-  `API_PATH`, `SHADER_MANIFEST_PATH`, `INDENT`).
-- **Every file starts with a header** listing what it defines and which modules it depends on /
-  is depended on by. Keep it true when you edit.
+任何 DOM 操作走 `js/ui.js`（唯一调 `getElementById` 的地方）。除 vendored `lz-string.js` 外，每个文件都有 `'use strict'`。
 
-Anything DOM-level goes through `js/ui.js` — it is the single place that calls `getElementById`.
-`'use strict'` is on in every file except the vendored `lz-string.js`.
-
-Adding a new module: create the file, add a `<script>` tag at the right position, update the
-two order comments (file header list in `index.html` and the note in `README.md`).
+新增模块：建文件 → 在正确位置加 `<script>` → 更新两处顺序注释（`index.html` 文件头列表、`README.md` 的那条说明）。
 
 ## File layout
 
@@ -258,7 +154,7 @@ two order comments (file header list in `index.html` and the note in `README.md`
 /
 ├── index.html              # DOM only — 底部 <script> 顺序即依赖图（见「Frontend modules」）
 ├── css/app.css             # 全部样式
-├── js/                     # 浏览器运行时 —— 见下节「Frontend modules」
+├── js/                     # 浏览器运行时 —— 见上节
 │   ├── vendor/lz-string.js # 第三方库，原样搬运，禁止改动
 │   ├── config.js           # 常量（无依赖）
 │   ├── state.js            # 跨模块共享的可变状态（无依赖）
@@ -287,5 +183,16 @@ two order comments (file header list in `index.html` and the note in `README.md`
 ├── shared/shader-api.js    # 服务端写入防护：体积 / ID / 限流 / 配额（两个后端共用）
 ├── api/shader.js           # Vercel function
 ├── netlify/functions/shader.js  # Netlify function
+├── docs/                   # 分主题：shader-workflow / checking / external-js / design / wont-fix
 └── netlify.toml, vercel.json, package.json
 ```
+
+## GLSL run check
+
+`scripts/check-glsl.js` 回答的是「**这个 shader 能不能在浏览器里真的跑起来**」。两个后端：`browser`（默认，真 WebGL2 编译 + 链接 + 渲染多帧，**权威**）、`glslang`（无 Chromium 时的静态编译，**仅供参考**）。`CI=true` 对降级直接判失败 —— 弱后端跑出绿灯是假绿灯；`--allow-fallback` 显式放行。
+
+- **校验失败先怀疑工具**，别为了让校验器变绿去改对的 shader。
+- **近黑帧只是警告，从不判失败**（渐入型 shader 在 t≈0 本来就接近全黑）。
+- 包装器两份（`js/renderer.js` 与 `scripts/lib/glsl-wrap.js`）每次运行 sha1 比对，不一致即中止。
+
+机制细节（为什么用 `extractShaderCode()`、浏览器后端复刻了什么运行时环境）写在源码里，读源码并在那里维护。

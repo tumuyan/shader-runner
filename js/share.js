@@ -18,15 +18,15 @@ function syncUrlInput() {
         encodedUrlInput.value = buildSourceUrl();
         return;
     }
-    const url = buildShareUrl('preview', code) + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
-    encodedUrlInput.value = url;
+    // 限制参数由 codec.js 的 buildUrl 统一拼，此处不再各追加一段
+    encodedUrlInput.value = buildShareUrl('preview', code);
 }
 
 // ---- 分享：压缩到 URL hash ----
 function doShare(mode) {
     // 与 syncUrlInput() 一样用 trim 后的值：否则首尾有空白时，「复制走的链接」
     // 和「框里显示的链接」不是同一份代码。
-    const url = buildShareUrl(mode, textarea.value.trim()) + maxSizeQuery() + fpsCapQuery() + autoPauseQuery();
+    const url = buildShareUrl(mode, textarea.value.trim());
     return copyText(url, '✓ ' + (mode==='preview'?'预览':'编辑') + ' 链接已复制');
 }
 

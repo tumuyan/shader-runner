@@ -88,20 +88,23 @@ decodeBtn.addEventListener('click', () => {
     const raw = encodedUrlInput.value.trim();
     if (!raw) { showToast('ℹ 请先生成分享链接'); return; }
 
-    let extracted = raw;
-
-    // 如果输入的是完整 URL，提取 hash 或 query 中的 code 参数
-    if (raw.startsWith('http://') || raw.startsWith('https://')) {
-        const hashMatch = raw.match(/#(?:code|id)=([^&]+)/);
-        if (hashMatch) {
-            extracted = hashMatch[1];
-        } else {
-            const queryMatch = raw.match(/[?&]code=([^&#]+)/);
-            if (queryMatch) {
-                extracted = queryMatch[1];
-            }
-        }
+    // 发布短链里没有代码，只有一个 8 位 ID —— 拿它去解压必然失败，报「数据已损坏」
+    // 会把人带偏（他粘贴的链接是好使的，只是不该在这里解码）。
+    if (/[#&?]id=/.test(raw)) {
+        showToast('ℹ 这是发布链接（#id=），请直接在浏览器打开；打开后可再分享取回代码');
+        return;
     }
+    // ?src= / ?js= 来源链接同理，而且它就是本页「生成分享链接」自己会填进去的那种。
+    if (/[#&?](?:src|js)=/.test(raw)) {
+        showToast('ℹ 这是来源链接（?src= / ?js=），请直接在浏览器打开');
+        return;
+    }
+
+    // 完整 URL 里先取出 code。按参数名定位而不是按协议前缀判断：file:// 分享出来的
+    // 链接同样是完整 URL，只认 http(s) 会把整串拿去解压，同样报「数据已损坏」。
+    let extracted = raw;
+    const codeMatch = raw.match(/[#&?]code=([^&#]+)/);
+    if (codeMatch) extracted = codeMatch[1];
 
     // 尝试解码。decodeURIComponent 对非法 % 序列（如 abc%zz）会抛 URIError，
     // 必须包住，否则 handler 中断、连错误 toast 都弹不出。

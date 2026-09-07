@@ -13,6 +13,7 @@
 | `#7` | `maxSize` 按最大边等比缩放，超宽屏下短边被压得很低 | 不改。锁**长边**的语义与 ShaderToy 的分辨率倍率一致：改 `maxSize` 时长边线性变化，可预期。改成限制「像素总量」在超宽屏和竖屏下表现完全不同，反而不可预期。见 `js/renderer.js` 的 `resize()` |
 | `#13` | `iDate` 用本地时区，与 ShaderToy 的 UTC 不一致 | 不改。本地时区符合直觉（晚上 8 点就该是晚上 8 点）；ShaderToy 用 UTC 是「全球同一个每日 shader」留下的历史包袱 |
 | `N7` | `applyShader()` 成功后无条件 `closeEditor()` | 不改。让「改完 → 立刻看全屏效果」一步到位；编辑器开着会盖住画面下半部分，不关等于看不全。要看代码按 `E` 重开 |
+| `N2` | 编辑模式下底部 80px 是隐形的暂停按钮（点画面会暂停、该条里 `iMouse` 不跟随） | **保留当前实现**（bnc 2026-09-07 拍板）。`css/app.css` 里那条注释就是结论：预览模式没键盘、编辑模式的触屏同样没有空格键，这条是它们的暂停入口；代价（底部 80px 不属于 canvas）由 `renderer.js` 转发 `mousemove` 补回 `iMouse.xy` 来抵消。**不要再提「改回 `body:not(.preview-mode) #playPauseBtn { display: none }`」** |
 
 ## 二、bnc 判定「目前不考虑」
 
@@ -22,13 +23,14 @@
 | `22` | `.gitignore` 补全（`.DS_Store`、`*.log`、`.netlify/`、`.vercel/`、`.env*`） | 目前不考虑 |
 | `13-5` | 导出 PNG | 目前不考虑。要么 `preserveDrawingBuffer`，要么在 draw 后立刻 `toDataURL()`，都会牵动渲染主路径 |
 | `H` | `img/screenshot.jpg` 体积压缩 | 目前不考虑 |
+| `N8` | 编辑模式下把不生效的自动暂停输入框置灰（复用 `.is-disabled`） | 不改（bnc 2026-09-07 拍板）。现有 `title` + 标签文案已经说明「仅预览链接生效」，够了；置灰会把它和「发布不可用」的视觉语言混在一起 |
 
 ## 三、别处已写明，此处不重复
 
 - **`N3` 编译失败 → 黑屏**（先删旧 `program` 再编译新的）：是刻意行为，不是 bug，也不要「修」成编译到临时 program 成功后再替换。
   理由与反例见 `CODEBUDDY.md` 的 *Applying a shader* 一节。
-- **`#5` / `N8` 自动暂停在编辑模式不生效**：`autoPauseMs` 是**链接参数**，只作用于预览链接，编辑模式下永远不触发。
-  见 `CODEBUDDY.md` 的 *URL params* 一节与 README 的 URL 参数表。
+- **`#5` 自动暂停在编辑模式不生效**：`autoPauseMs` 是**链接参数**，只作用于预览链接，编辑模式下永远不触发。
+  见 `CODEBUDDY.md` 的 *URL params* 一节与 README 的 URL 参数表。（`N8` 是同一议题下的另一提案，已判「不改」，见第二节。）
 
 ## 四、bnc 要求复核、复核结论为「维持现状」
 
