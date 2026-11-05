@@ -85,7 +85,11 @@ function unescapeTemplate(s) {
     return s.replace(/\\([\s\S])/g, (_, c) => c);
 }
 
-/** 渲染产物文件。格式固定，extract 依赖它反解。 */
+/**
+ * 渲染产物文件。格式固定，extract 依赖它反解。
+ * label 用 escapeSingleQuoted（清单同一套规则）：只转义单引号的话，反斜杠会被
+ * 当成转义序列吃掉，label 以 \ 结尾时甚至拼出语法错误的 JS。
+ */
 function renderShaderFile(opts) {
     const short = String(opts.src).replace(/^.*\//, '').replace(GLSL_RE, '');
     return `// 自动生成，请勿手工编辑。
@@ -96,7 +100,7 @@ function renderShaderFile(opts) {
     var d = (w.__SHADER_REGISTRY__ = w.__SHADER_REGISTRY__ || []);
     d.push({
         path: '${opts.path}',
-        label: '${String(opts.label).replace(/'/g, "\\'")}',
+        label: '${escapeSingleQuoted(opts.label)}',
         code: \`
 ${escapeTemplate(opts.code)}\`
     });
@@ -137,7 +141,7 @@ function parseShaderFile(text) {
     return {
         src, hash,
         path: pm ? pm[1] : null,
-        label: lm ? lm[1].replace(/\\'/g, "'") : null,
+        label: lm ? unescapeSingleQuoted(lm[1]) : null,
         code: unescapeTemplate(code[1]).replace(/^\n/, '')
     };
 }
@@ -309,7 +313,7 @@ function manifestEntry(rel) {
         if (parsed && parsed.label) label = parsed.label;
         if (label === null) {
             const lm = src.match(/label\s*:\s*'((?:[^'\\]|\\.)*)'/);
-            if (lm) label = lm[1].replace(/\\'/g, "'");
+            if (lm) label = unescapeSingleQuoted(lm[1]);
         }
     } catch (e) { /* 读不到就退回文件名 */ }
     if (label === null) {
@@ -318,7 +322,7 @@ function manifestEntry(rel) {
     return { path: rel, label };
 }
 
-/** 把任意字符串写成单引号 JS 字面量的内容部分（反斜杠与单引号都要转义） */
+/** 把任意字符串写成单引号 JS 字面量的内容部分（反斜杠与单引号都要转义）。产物与清单共用。 */
 function escapeSingleQuoted(s) {
     return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }

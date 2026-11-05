@@ -89,6 +89,19 @@ section('GLSL 形态校验（只拦必定编译不过的）');
     check('注释里的 /* 不会吃掉后面真代码',
         S('// a /* b\n' + goodCode).ok === true);
 
+    // 回归：先删行注释、再删块注释的两条串行正则会误杀合法 shader。
+    // 块注释里含 //（ShaderToy 头注释常见）时，行注释正则先吃掉 // 到行尾，
+    // 留下未闭合的 /*，随后块注释正则一路配到后面的 */ 把真代码整段吞掉。
+    // 单个交替正则一次扫描才是对的。下面两条在旧实现下都会误报「缺少 mainImage」。
+    check('块注释含 // 不吃掉后面真代码',
+        S('/* From https://www.shadertoy.com/view/4dSSDK */\n' + goodCode + '\n/* end */').ok === true);
+    check('块注释含 // 且后面还有块注释',
+        S('/* see http://x */\n' + goodCode + '\n/* tail */').ok === true);
+    // 注释一律替换成空格而非空串：块注释夹在 void 与 mainImage 之间不该粘成
+    // `voidmainImage`（删成空串就会），否则 mainImage 这个词会被吞掉。
+    check('注释替换成空格而非空串',
+        api.stripComments('void/* c */mainImage') === 'void mainImage');
+
     // 这条是本组最重要的回归护栏：70s-melt-color 正是靠 precision 重声明活着的。
     // 它在真实 WebGL2/ANGLE 下编译 + 链接 + 渲染全过，只有 glslang 判它失败。
     // 哪天有人想「顺手把 precision 也拦了」，这条会立刻变红。

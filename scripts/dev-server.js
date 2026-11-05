@@ -130,7 +130,16 @@ async function main() {
         }
 
         // 目录穿越防护：解析后必须仍在 ROOT 内
-        let rel = decodeURIComponent(url.pathname);
+        // decodeURIComponent 对非法 % 序列（如 /%zz）抛 URIError；不接住会让整个
+        // 进程退出。与前端 params.js / editor.js 一致，坏 URL 当作坏请求处理。
+        let rel;
+        try {
+            rel = decodeURIComponent(url.pathname);
+        } catch (e) {
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('400 Bad Request: malformed URL');
+            return;
+        }
         if (rel === '/' || rel === '') rel = '/index.html';
         const filePath = path.join(ROOT, rel);
         if (!filePath.startsWith(ROOT + path.sep) && filePath !== path.join(ROOT, 'index.html')) {
