@@ -1,0 +1,35 @@
+# CNB 云原生构建配置。
+#
+# 检查流水线统一 2 核：本文件的 .check 锚点，以及 include 进来的
+# ai-code-review 模板（模板里自带 runner.cpus: 2），合起来就是全部流水线。
+include:
+  - https://cnb.cool/v5.0/temple/-/blob/main/.pipeline-ai-review.yml
+
+# 对齐 .github/workflows/check.yml：Node 22 → npm ci → 装 Chromium 环境 → 总校验。
+# CI=true 由平台注入，check-glsl.js 会据此拒绝「浏览器后端不可用就静默降级」。
+.check: &check
+  name: check
+  runner:
+    cpus: 2
+  docker:
+    image: node:22
+  env:
+    CI: 'true'
+  stages:
+    - name: install-deps
+      script: npm ci
+    - name: setup-env
+      script: bash scripts/ci-setup.sh --no-npm
+    - name: run-check
+      script: npm run check
+
+main:
+  push:
+    - <<: *check
+
+# pull_request 有意全量放行："**" 覆盖所有目标分支，对齐 check.yml 无过滤的
+# pull_request:。CNB 靠顶层 key 过滤分支（无 GHA 的 branches: 字段），故上面
+# main: 的 push 只对 main 生效；目标 main 的 PR 与 ai-code-review 并行跑。
+"**":
+  pull_request:
+    - <<: *check
