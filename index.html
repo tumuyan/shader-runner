@@ -17,7 +17,7 @@
     <div class="top-bar">
         <div class="top-btn-row">
             <button class="top-btn share-online" id="shareServerBtn">发布</button>
-            <button class="top-btn share-online" id="shareBtn">分享</button>
+            <button class="top-btn share-online" id="shareBtn">分享预览</button>
             <button class="top-btn edit-btn" id="editBtn">编辑</button>
             <button class="top-btn icon-only" id="editHintBtn">?</button>
         </div>
@@ -43,14 +43,15 @@
         <label>粘贴 ShaderToy GLSL 代码（mainImage 函数体）</label>
         <textarea id="shaderCode" spellcheck="false"></textarea>
         <div id="encodedUrlRow">
-            <input id="encodedUrlInput" type="text" placeholder="点击「生成分享链接」生成 URL，或直接在此粘贴要解码的 URL..." spellcheck="false">
+            <input id="encodedUrlInput" type="text" placeholder="点击「分享编辑」/「分享预览」生成 URL，或直接在此粘贴要解码的 URL..." spellcheck="false">
         </div>
         <div class="overlay-actions">
             <select class="overlay-sel" id="shaderSelector"></select>
             <button class="overlay-btn btn-file" id="openFileBtn">📂</button>
             <button class="overlay-btn btn-apply" id="applyBtn">应用</button>
             <button class="overlay-btn btn-upload" id="uploadBtn">发布</button>
-            <button class="overlay-btn btn-share" id="shareUrlBtn">分享</button>
+            <button class="overlay-btn btn-share" id="shareEditBtn">分享编辑</button>
+            <button class="overlay-btn btn-share" id="sharePreviewBtn">分享预览</button>
             <button class="overlay-btn btn-decode" id="decodeBtn">解码</button>
             <button class="overlay-btn btn-close" id="closeBtn">关闭</button>
             <button class="overlay-btn btn-default" id="defaultBtn">重置</button>
@@ -84,7 +85,7 @@
                 <h4>顶部控件</h4>
                 <p>
                     <span class="badge badge-orange">✎ 编辑</span> 打开编辑器面板，编写或粘贴 GLSL 代码<br>
-                    <span class="badge badge-green">🔗 分享</span> 将当前 shader 压缩至 URL，一键复制分享<br>
+                    <span class="badge badge-green">🔗 分享预览</span> 把当前 shader 压成预览链接，一键复制（打开即全屏播放）<br>
                     <span class="badge badge-blue">☁ 发布</span> 上传代码至服务器，生成固定短链接<br>
                     <span class="badge badge-blue">分辨率/帧率</span> 限制渲染分辨率和帧率上限，0 为不限<br>
                     <span class="badge badge-blue">预览模式自动暂停</span> 链接打开后按毫秒自动暂停，0 为不暂停；当前编辑页不生效
@@ -95,7 +96,8 @@
                 <h4>编辑器面板</h4>
                 <p>
                     在下拉菜单中快速切换内置 shader，点 <kbd>📂</kbd> 从本地 <kbd>.glsl</kbd> 文件加载。<br>
-                    点击 <kbd>应用</kbd> 编译运行，<kbd>分享</kbd> 生成链接，<kbd>发布</kbd> 上传至服务器。<br>
+                    点击 <kbd>应用</kbd> 编译运行，<kbd>发布</kbd> 上传至服务器。<br>
+                    <kbd>分享编辑</kbd> 生成 <kbd>?mode=edit</kbd> 链接（对方打开后可继续改代码），<kbd>分享预览</kbd> 生成 <kbd>?mode=preview</kbd> 链接（打开即全屏播放）；两者都会把链接填入上方输入框并复制。<br>
                     <kbd>解码</kbd> 可还原分享链接中的代码，<kbd>重置</kbd> 恢复默认 shader。
                 </p>
             </div>
@@ -106,7 +108,7 @@
                 <table class="comparison-table">
                     <tr>
                         <th></th>
-                        <th>🔗 分享（默认）</th>
+                        <th>🔗 分享（压进 URL）</th>
                         <th>☁ 发布到服务器</th>
                     </tr>
                     <tr>

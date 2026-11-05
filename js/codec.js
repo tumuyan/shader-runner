@@ -150,6 +150,7 @@ function buildServerUrl(mode, id) {
 
 // ?src=（内置文件路径）与 ?js=（外部 JS URL）共用一个参数位：同一时刻只可能有一个
 // 来源（state.js 里两者互斥），都为空时就是一条不带来源的普通链接。
-function buildSourceUrl() {
-    return buildUrl({ mode: 'preview', src: currentSrc, js: currentJs });
+// mode 由调用方给：三颗分享按钮按各自语义传 edit / preview；省略时默认 preview。
+function buildSourceUrl(mode) {
+    return buildUrl({ mode: mode || 'preview', src: currentSrc, js: currentJs });
 }
