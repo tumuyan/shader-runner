@@ -5,7 +5,7 @@
  *   node scripts/gen-shader-manifest.js           # 生成 / 刷新清单
  *   node scripts/gen-shader-manifest.js --check   # 校验（CI 用，过期退出码 1）
  *
- * --check 会同时校验四件事：
+ * --check 会同时校验五件事：
  *   1. manifest.js 与 shader/ 目录内容一致，且是新格式（旧格式的 label 是现算的，
  *      比什么都能过 —— 放过去就是假绿）
  *   2. 每个 shader 文件的 path / label 写对了，且与 manifest 记录一致

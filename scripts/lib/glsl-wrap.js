@@ -4,8 +4,11 @@
  *
  * 浏览器真正编译的是「包装器 + 用户代码」，不是 *.glsl 原文。只校验原文会漏掉
  * 两类只有包装后才暴露的错误：
- *   1. 与包装器冲突：重复 #version、precision 重声明、重复定义 fragColor 等
+ *   1. 与包装器冲突：重复 #version、重复定义 fragColor 等
  *   2. 链接期错误：mainImage 未定义 / 签名不符（编译能过、链接失败 → 页面黑屏）
+ *
+ * 注意 precision 重声明不在此列：它在 ANGLE 下合法（70s-melt-color 就依赖它，
+ * 见 docs/design.md），真编译与服务端形态校验都不拦。
  *
  * 页面是零构建的普通 <script> 应用，不能 require 本模块，所以这里存一份副本，
  * 并用 verifyAgainstRuntime() 比对 sha1 —— 改了运行时忘了同步这里会直接报错，
