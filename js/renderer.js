@@ -2,7 +2,7 @@
 /**
  * WebGL2 渲染：shader 编译 / program / GL 资源 / 渲染循环 / 计时 / 鼠标 / 暂停。
  *
- * 依赖：config.js（DEFAULT_SHADER）、state.js、params.js（isPreview）、ui.js（显示与播放控件）
+ * 依赖：config.js（DEFAULT_SHADER）、state.js、params.js（isPreview）、ui.js（canvas 等 DOM 引用 + showToast）
  * 被依赖：catalog.js（createProgram / glResourcesReady）、app.js（resize / render / togglePause）
  *
  * ⚠ VERTEX_SHADER 与 buildFragmentShader 在 scripts/lib/glsl-wrap.js 里有一份逐字符副本，
@@ -10,7 +10,6 @@
  *   否则校验直接判「包装器漂移」并退出 —— 模板字符串里的缩进属于 GLSL 文本，别顺手对齐。
  */
 
-const canvas = document.getElementById('glCanvas');
 const gl = canvas.getContext('webgl2', {
     alpha: false, antialias: true,
     premultipliedAlpha: false, preserveDrawingBuffer: false,
@@ -169,8 +168,9 @@ function initGLResources() {
     for (let i = 0; i < 4; i++) { gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D, dflTex); }
     return true;
 }
-// 初始化失败只置标记：此处早于 toast 的 const 声明，直接 showToast 会触发 TDZ 报错，
-// 把脚本剩余部分（事件绑定、init()）全部打断。提示延后到 init() 末尾。
+// 初始化失败只置标记，不在这里 showToast：ui.js 排在本文件之前，toast / showToast
+// 此刻已就绪（不存在 TDZ）。延后到 app.js 的 init() 末尾，是为了让启动期提示统一
+// 在首屏就绪后给出 —— toast 是限时提示，顶层同步阶段弹出会在用户看到页面前就消失。
 glResourcesReady = initGLResources();
 if (!glResourcesReady) {
     glInitFailed = true;

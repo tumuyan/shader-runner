@@ -93,7 +93,8 @@ async function init() {
     playPauseBtn.textContent = paused ? '▶' : '⏸';
     requestAnimationFrame(render);
 
-    // 延后到此处提示：glInitFailed 在 renderer.js 置位，那时 toast 还没初始化
+    // 启动期提示统一收在 init() 末尾：renderer.js 只置 glInitFailed，不负责呈现。
+    // （ui.js 排在 renderer 之前，那时 showToast 已可用，延后不是为了避免 TDZ。）
     if (glInitFailed) showToast('✗ WebGL 资源初始化失败，请刷新页面');
 }
 

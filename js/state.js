@@ -24,7 +24,7 @@ let frameCap = 0;           // 帧率上限，0 = 不限
 
 let contextLost = false;      // WebGL 上下文是否丢失——renderer 置位，catalog.applyShader 读
 let glResourcesReady = false; // VAO/VBO/默认纹理是否就位——renderer 置位，catalog.applyShader 读
-let glInitFailed = false;     // 启动期 GL 资源初始化失败；提示延后到 init()，因为那时才轮到 toast 声明
+let glInitFailed = false;     // 启动期 GL 资源初始化失败；renderer 只置位，提示由 app.js 的 init() 在首屏就绪后给出
 
 // 发布接口（/api/shader）是否可用：null = 启动探测尚未返回，true/false = 已判定。
 // share.js 探测并写，app.js（?id= 分支）与 share.js（发布按钮）读 —— 静态托管没有后端，

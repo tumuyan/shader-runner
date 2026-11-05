@@ -2,13 +2,14 @@
 /**
  * DOM 引用与纯 UI 原子操作。
  *
- * 元素 id 的权威清单在 index.html，这里集中取一次：其它模块直接用这些常量，
- * 不要再各写一遍 getElementById。
+ * 元素 id 的权威清单在 index.html，这里集中取一次（含 #glCanvas 这个渲染根元素）：
+ * 其它模块直接用这些常量，不要再各写一遍 getElementById。
  *
  * 依赖：无（排在最前）。
  * 被依赖：几乎所有模块都用 showToast / toggleEditor / copyText。
  */
 
+const canvas = document.getElementById('glCanvas');
 const overlay = document.getElementById('inputOverlay');
 const textarea = document.getElementById('shaderCode');
 const applyBtn = document.getElementById('applyBtn');
