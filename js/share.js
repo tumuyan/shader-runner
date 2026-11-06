@@ -2,53 +2,54 @@
 /**
  * 分享（压缩进 URL）与发布（上传服务器换短链）。
  *
+ * 三个分享入口共用一份逻辑，区别只在链接给谁用：
+ *   顶栏「分享预览」→ localShare() → preview；
+ *   编辑器「分享编辑」/「分享预览」→ doShare('edit' | 'preview')。
+ * 复制走的链接永远就是输入框里显示的那一条（doShare 读框，不另生成一份），
+ * 所以「框里 preview、剪贴板 edit」这类分歧不可能出现。
+ *
  * 依赖：config.js（API_PATH / API_PROBE_TIMEOUT_MS）、state.js（currentSrc / currentJs / apiAvailable）、ui.js、codec.js
  * 被依赖：catalog.js（syncUrlInput）、editor.js（解码后会同步输入框）
  */
 
-// 把当前状态写成可复制的链接，同步到编辑器里的 URL 输入框
-function syncUrlInput() {
+// 把当前状态写成链接，同步到编辑器里的 URL 输入框。
+// mode 决定链接打开后是编辑还是预览；省略时按 preview 填（启动、来源变化、解码后的
+// 自动同步都走这个默认值）。只有点分享按钮时才传该按钮对应的 mode。
+function syncUrlInput(mode = 'preview') {
     const code = textarea.value.trim();
     if (!code || code === DEFAULT_SHADER.trim()) {
         encodedUrlInput.value = '';
         return;
     }
-    // 如果当前 shader 来自内置文件或外部 JS，生成 ?src= / ?js= 短链接
-    if (currentSrc || currentJs) {
-        encodedUrlInput.value = buildSourceUrl();
-        return;
-    }
-    // 限制参数由 codec.js 的 buildUrl 统一拼，此处不再各追加一段
-    encodedUrlInput.value = buildShareUrl('preview', code);
+    // 有内置/外部来源时生成 ?src= / ?js= 短链，否则把整份代码压进 URL。
+    // 限制参数由 codec.js 的 buildUrl 统一拼，此处不再各追加一段。
+    encodedUrlInput.value = (currentSrc || currentJs)
+        ? buildSourceUrl(mode)
+        : buildShareUrl(mode, code);
 }
 
 // ---- 分享：压缩到 URL hash ----
+// 复制的就是输入框里那条链接：先按 mode 把框刷成对应模式，再读框复制。两处共用
+// 同一个字符串，天然保证「显示 = 复制」，也天然带上同一份 trim 后的代码。
 function doShare(mode) {
-    // 与 syncUrlInput() 一样用 trim 后的值：否则首尾有空白时，「复制走的链接」
-    // 和「框里显示的链接」不是同一份代码。
-    const url = buildShareUrl(mode, textarea.value.trim());
-    return copyText(url, '✓ ' + (mode==='preview'?'预览':'编辑') + ' 链接已复制');
+    syncUrlInput(mode);
+    const url = encodedUrlInput.value;
+    if (!url) {
+        showToast('ℹ 请先编写 shader 代码');
+        return Promise.resolve(false);
+    }
+    return copyText(url, '✓ ' + (mode === 'preview' ? '预览' : '编辑') + ' 链接已复制');
 }
 
-// 本地分享（不依赖服务器）：有内置/外部来源时分享 ?src= / ?js= 短链，否则把整份代码压进 URL。
-// 也是「发布」不可用时的兜底路径 —— 与点「分享」完全同一份行为，别让用户拿到两种结果。
+// 顶栏「分享预览」与「发布」不可用/失败时的兜底是同一个动作：都生成预览链接。
+// 保留这个名字，让几个兜底调用点读起来是在说「退回本地分享」，而不是「发了个 preview」。
 function localShare() {
-    if (currentSrc || currentJs) {
-        return copyText(buildSourceUrl(), '✓ 来源链接已复制');
-    }
     return doShare('preview');
 }
 
 shareBtn.addEventListener('click', localShare);
-
-shareUrlBtn.addEventListener('click', () => {
-    syncUrlInput();
-    if (currentSrc || currentJs) {
-        copyText(buildSourceUrl(), '✓ 来源链接已复制');
-    } else {
-        doShare('edit');
-    }
-});
+shareEditBtn.addEventListener('click', () => doShare('edit'));
+sharePreviewBtn.addEventListener('click', () => doShare('preview'));
 
 // ---- 发布可用性探测 ----
 // 静态托管（GitHub Pages / cnb.run / Cloudflare Pages）根本没有 /api/shader，点「发布」

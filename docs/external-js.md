@@ -25,7 +25,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 - 协议必须是 `http:` / `https:`（`data:` / `javascript:` / `file:` 会被拒），**不限制主机**。
 - URL 里含 `?`、`&` 时必须 `encodeURIComponent`，否则会被当成新的参数分隔符。
-- 加载后出现在下拉列表里，标注「（外部）」；分享按钮生成 `?js=` 短链。
+- 加载后出现在下拉列表里，标注「（外部）」；两颗分享按钮都生成 `?js=` 短链，按所点按钮带 `mode=edit` 或 `mode=preview`。
 
 ## 目标地址必须满足三个响应头
 
